@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1.0" name="viewport">
+    <title>{{.Title}}</title>
+    <link href="templates/index.css" rel="stylesheet">
+    <link href="templates/http_cdnjs.cloudflare.com_ajax_libs_font-awesome_6.2.0_css_all.css" rel="stylesheet">
+    <link href="templates/http_cdnjs.cloudflare.com_ajax_libs_highlight.js_11.8.0_styles_github.min.css"
+          rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <script src="templates/http_cdn.jsdelivr.net_npm_marked_marked.min.js"></script>
+    <script src="templates/http_cdnjs.cloudflare.com_ajax_libs_highlight.js_11.8.0_highlight.min.js"></script>
+</head>
+<body>
+<script src="templates/index.js"></script>
+<script src="templates/file.js"></script>
+<header>
+    <span id="conversation-title">{{.Title}}</span>
+    <div id="model-selector" style="display: flex; align-items: center;">
+        <label for="model-select" style="margin-right: 5px;"></label>
+        <select id="model-select" onchange="changeModel()">
+            <option selected value="gemini-2.0-flash">Gemini 2.0 Flash (默认)</option>
+            <option value="gemini-exp-1206">Gemini Experimental 1206</option>
+            <option value="gemini-2.0-pro">Gemini 2.0 Pro</option>
+            <option value="gemini-2.0-flash-thinking-exp">Gemini 2.0 Flash (推理)</option>
+            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+        </select>
+        <!-- Theme Toggle Button -->
+        <button id="theme-toggle">
+            <i class="fas fa-sun"></i>
+        </button>
+    </div>
+</header>
+<div id="main-container">
+    <!-- Left Chat Area -->
+    <div id="chat-area">
+        <div id="chat-container"></div>
+        <!-- Scroll to Bottom Button -->
+        <button id="scroll-to-bottom" style="display: none;"><i class="fas fa-arrow-down"></i></button>
+        <div id="input-container">
+            <button id="new-conversation-button" onclick="startNewConversation()"><i class="fas fa-comment-dots"></i>
+            </button>
+            <label for="file-input" id="select-file-label"> + </label>
+            <input id="file-input" multiple onchange="handleFiles(this.files)" style="display: none;" type="file">
+            <textarea id="user-input" oninput="adjustTextareaHeight()" placeholder="Type your question..."
+                      style="width: 696px; height: 5px;"></textarea>
+            <button id="send-button" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <!-- Right History Container -->
+    <div id="history-container">
+        <h3>历史记录</h3>
+        <ul id="history-list"></ul>
+    </div>
+</div>
+
+</body>
+</html>

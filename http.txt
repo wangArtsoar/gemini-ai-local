@@ -1,0 +1,15 @@
+curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-thinking-exp-01-21:streamGenerateContent?alt=sse&key=AIzaSyAbYS0Ez49A88wpVA9q599iO_gCYsKs_MI" ^
+-H "Content-Type: application/json" ^
+--no-buffer ^
+-d "{ \"contents\": [ { \"parts\": [ { \"text\": \"Write a story about a magic backpack.\" } ] } ] }"
+
+
+curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=AIzaSyAbYS0Ez49A88wpVA9q599iO_gCYsKs_MI" ^
+-H "Content-Type: application/json" ^
+--no-buffer ^
+-d "{ \"contents\": [ { \"parts\": [ { \"text\": \"Write a story about a magic backpack.\" } ] } ] }"
+
+
+https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=AIzaSyAbYS0Ez49A88wpVA9q599iO_gCYsKs_MI
+
+https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=AIzaSyAbYS0Ez49A88wpVA9q599iO_gCYsKs_MI

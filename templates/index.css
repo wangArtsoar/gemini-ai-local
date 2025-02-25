@@ -1,0 +1,766 @@
+/*  General Styles */
+:root {
+    --bg-color: #fff9f0; /* Light Yellow */
+    --text-color: #333;
+    --header-bg-color: #ffdb58; /* Slightly darker yellow for header */
+    --header-text-color: #333;
+    --message-bg-color: #e6f7ff;
+    --ai-message-bg-color: #f9f9f9;
+    --button-bg-color: #4CAF50;
+    --button-text-color: white;
+    --button-hover-bg-color: #45a049;
+    --border-color: #ddd;
+    --shadow-color: rgba(255, 223, 186, 0.5);
+    --code-bg-color: #f0f3f7; /* 浅灰色，用于浅色主题代码块 */
+    --history-hover-bg-color: #f2f2f2; /* 浅灰色，用于浅色主题历史记录悬停 */
+}
+
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    transition: background-color 0.3s, color 0.3s;
+}
+
+header {
+    background-color: var(--header-bg-color);
+    color: var(--header-text-color);
+    padding: 10px;
+    text-align: left;
+    font-size: 1.5rem;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+#chat-container {
+    display: none;
+    width: 800px;
+    margin: 10px auto;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    box-shadow: 0 4px 10px var(--shadow-color);
+    padding: 10px;
+    overflow-y: auto;
+    max-height: 65vh;
+    transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
+}
+
+#conversation {
+    width: 1000px; /* 固定宽度 */
+    margin: 0 auto; /* 居中显示 */
+    background: var(--bg-color); /* 背景颜色 */
+    border: 1px solid var(--border-color); /* 边框 */
+    border-radius: 10px; /* 圆角 */
+    box-shadow: 0 4px 10px var(--shadow-color); /* 阴影效果 */
+    padding: 10px; /* 内边距 */
+    overflow-y: auto; /* 垂直滚动条 */
+    max-height: 65vh; /* 最大高度限制 */
+    transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
+}
+
+.message {
+    margin: 10px 0;
+    padding: 10px;
+    border-radius: 8px;
+    max-width: 80%;
+    word-wrap: break-word;
+}
+
+.user-message {
+    background-color: var(--message-bg-color);
+    margin-left: auto; /* Push the message to the right */
+    padding: 5px; /* Add some padding for better readability */
+    word-break: break-word; /* Allow long words to wrap */
+    max-width: 80%; /* Limit maximum width */
+    width: fit-content; /* Adapt width to content */
+    min-width: 10px; /* Set a minimum width */
+    transition: background-color 0.3s;
+    display: block; /* Ensure block-level display */
+}
+
+.ai-message {
+    background-color: var(--ai-message-bg-color);
+    text-align: left;
+    margin-right: auto;
+    transition: background-color 0.3s;
+    width: fit-content;
+    min-width: 10px;
+}
+
+#input-container {
+    max-width: 800px;
+    margin: 10px auto;
+    display: flex;
+    gap: 10px;
+    align-items: flex-end; /* Ensure Send button aligns with input */
+}
+
+#user-input {
+    flex: 1;
+    padding: 5px;
+    font-size: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    resize: none;
+    overflow-y: hidden;
+    white-space: pre-wrap;
+    line-height: 1.5em;
+    min-height: 1.5em;
+    max-height: calc(8 * 1.5em);
+    color: var(--text-color);
+    background-color: var(--bg-color);
+    transition: background-color 0.3s, border-color 0.3s, color 0.3s;
+}
+
+#send-button {
+    padding: 10px 20px;
+    font-size: 1rem;
+    background-color: var(--button-bg-color);
+    color: var(--button-text-color);
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    height: 40px;
+}
+
+#send-button:hover {
+    background-color: var(--button-hover-bg-color);
+}
+
+#user-input:focus {
+    outline: none;
+}
+
+/* 代码块样式 (浅色主题) */
+pre {
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid #ced4da; /* 浅灰色边框 */
+    background-color: var(--code-bg-color); /* 使用变量 */
+}
+
+/* 代码块样式 (深色主题) */
+.dark-theme pre {
+    border: 1px solid #555; /* 深灰色边框 */
+    background-color: var(--code-bg-color);
+}
+
+.copy-btn {
+    padding: 5px 10px;
+    background-color: #007BFF;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background-color 0.3s;
+}
+
+.copy-btn:hover {
+    background-color: #0056b3;
+}
+
+.copy-btn:last-child {
+    background-color: #f0ad4e;
+}
+
+.copy-btn:last-child:hover {
+    background-color: #ec971f;
+}
+
+/* 清空对话按钮样式 */
+#clear-conversation-button {
+    float: right;
+    background-color: #f44336;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+#clear-conversation-button:hover {
+    background-color: #d32f2f;
+}
+
+/* 主容器 */
+#main-container {
+    display: flex; /* 使用 Flexbox 布局 */
+    max-width: 1940px;
+    margin: 0 auto;
+    gap: 20px; /* 左右区域之间的间距 */
+}
+
+/* 左侧聊天区 */
+#chat-area {
+    flex: 4; /* 左侧区域占据较大空间 */
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* 右侧历史记录 */
+#history-container {
+    flex: 1; /* 右侧区域占据较小空间 */
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 10px;
+    box-shadow: 0 4px 10px var(--shadow-color);
+    height: 70vh; /* 限制高度 */
+    overflow-y: auto; /* 超出内容可滚动 */
+    transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
+}
+
+/* 历史记录标题 */
+#history-container h3 {
+    margin: 0;
+    padding: 0 0 10px;
+    font-size: 16px;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+    color: var(--text-color);
+    transition: color 0.3s;
+}
+
+/* 历史记录列表 */
+#history-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+#history-list li {
+    padding: 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #eee;
+    color: var(--text-color);
+    transition: color 0.3s;
+}
+
+/* 历史记录悬停样式 (浅色主题) */
+#history-list li:hover {
+    background-color: var(--history-hover-bg-color); /* 使用变量 */
+}
+
+#input-container {
+    max-width: 800px;
+    margin: 20px auto;
+    display: flex;
+    align-items: center; /* 修改这里，垂直居中对齐 */
+}
+
+#new-conversation-button {
+    /* 设置按钮大小 */
+    width: 40px; /* 或更大的值，根据需要调整 */
+    height: 40px; /* 或更大的值，根据需要调整 */
+    border-radius: 50%; /* 使按钮变成圆形 */
+    border: none;
+    background-color: #007bff; /* 设置背景颜色 */
+    color: white;
+    font-size: 20px; /* 调整图标大小 */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    margin-right: 10px; /* 与输入框的间距 */
+    transition: background-color 0.3s;
+}
+
+#new-conversation-button:hover {
+    background-color: #0056b3;
+}
+
+#new-conversation-button i {
+    font-size: 20px; /* 调整图标大小，与按钮大小一致 */
+}
+
+li.active {
+    /*background-color: #000000; !* 背景颜色 *!*/
+    border-left: 4px solid #007bff; /* 左边的蓝色边框 */
+    color: #007bff; /* 字体颜色 */
+}
+
+#theme-toggle {
+    background-color: transparent;
+    border: none;
+    color: var(--header-text-color);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 5px 10px;
+    transition: color 0.3s;
+}
+
+#theme-toggle:hover {
+    color: #fff;
+}
+
+/* 调整 Model 选择器样式 */
+#model-selector {
+    display: flex;
+    align-items: center;
+    margin-left: auto; /* 将 Model 选择器推到右侧 */
+}
+
+#model-selector label {
+    margin-right: 5px;
+    color: var(--header-text-color); /* 确保颜色与标题一致 */
+}
+
+#model-selector select {
+    background-color: var(--bg-color); /* 与背景颜色一致 */
+    color: var(--text-color); /* 与文本颜色一致 */
+    border: 1px solid var(--border-color); /* 使用统一样式 */
+    border-radius: 5px; /* 可选：添加圆角 */
+    transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+
+/* 修改 Header 的 Flex 布局 */
+header > div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between; /* 保持标题和 Model 选择器分列两边 */
+}
+
+#conversation-title {
+    flex-grow: 1; /* 允许标题占用剩余空间 */
+    text-align: left; /* 标题左对齐 */
+    white-space: nowrap; /* 阻止标题换行 */
+    overflow: hidden; /* 隐藏超出部分 */
+    text-overflow: ellipsis; /* 使用省略号 */
+}
+
+/* Dark Theme Overrides */
+.dark-theme {
+    --bg-color: #333;
+    --text-color: #eee;
+    --header-bg-color: #555;
+    --header-text-color: #eee;
+    --message-bg-color: #444;
+    --ai-message-bg-color: #555;
+
+    --border-color: #666;
+    --shadow-color: rgba(255, 255, 255, 0.1);
+    /* 历史记录选中状态 */
+    --history-selected-bg-color: #444; /* 选中背景 */
+    --history-selected-border-color: #66a3ff; /* 选中左边框 */
+    --history-selected-text-color: #66a3ff; /* 选中文字颜色 */
+
+    /* 按钮颜色 */
+    --button-bg-color: #666;
+    --button-text-color: #fff;
+    --button-hover-bg-color: #777;
+    /* 编辑/删除 按钮颜色 */
+    --edit-button-color: #66a3ff;
+    --delete-button-color: #ff6666;
+    --edit-delete-hover-color: #fff; /* 鼠标悬停颜色 */
+
+    /* 对话框滚动条颜色 */
+    --scrollbar-thumb-color: #888;
+    --scrollbar-track-color: #555;
+    --scrollbar-thumb-hover-color: #aaa;
+    --code-bg-color: #282c34; /* 深灰色, 用于深色主题代码块 */
+
+    /* 历史记录背景色 (深色模式) */
+    --history-hover-bg-color: #2a2a2a; /* 深蓝色背景 */
+}
+
+.dark-theme .hljs {
+    background: #2a2a2a !important; /* 深灰背景 */
+    color: #dcdcdc !important; /* 浅灰主文字 */
+}
+
+/* ---------- 语法高亮颜色调整 ---------- */
+.dark-theme .hljs-title,
+.dark-theme .hljs-attr {
+    color: #7ec4a1 !important; /* 青绿色 - 用于类名/属性 */
+}
+
+.dark-theme .hljs-keyword {
+    color: #d98c8c !important; /* 浅红色 - 用于关键字 */
+}
+
+.dark-theme .hljs-string {
+    color: #e6c37e !important; /* 琥珀色 - 用于字符串 */
+}
+
+.dark-theme .hljs-comment {
+    color: #7a7a7a !important; /* 中灰色 - 用于注释 */
+}
+
+.dark-theme .hljs-number {
+    color: #b5cea8 !important; /* 浅绿色 - 用于数字 */
+}
+
+.dark-theme .hljs-built_in {
+    color: #87ceeb !important; /* 天蓝色 - 内置函数 */
+}
+
+.dark-theme .hljs-function {
+    color: #dcdcaa !important; /* 浅黄色 - 函数名 */
+}
+
+/* 历史记录选中样式 (深色模式) */
+.dark-theme #history-list li.active {
+    background-color: var(--history-selected-bg-color);
+    border-left-color: var(--history-selected-border-color);
+    color: var(--history-selected-text-color);
+}
+
+/* 历史记录菜单项样式 (深色模式) */
+.dark-theme .history-menu-item {
+    color: var(--text-color); /* 文本颜色 */
+    padding: 5px 10px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.dark-theme .history-menu-item:hover {
+    background-color: var(--message-bg-color); /* 使用与消息背景相同的颜色 */
+}
+
+/* 历史记录 "编辑" 按钮 (深色模式) */
+.dark-theme .edit-option {
+    color: var(--edit-button-color);
+}
+
+.dark-theme .edit-option:hover {
+    color: var(--edit-delete-hover-color);
+}
+
+/* 历史记录 "删除" 按钮 (深色模式) */
+.dark-theme .delete-option {
+    color: var(--delete-button-color);
+}
+
+.dark-theme .delete-option:hover {
+    color: var(--edit-delete-hover-color);
+}
+
+/* 滚动条样式 (深色模式) */
+.dark-theme ::-webkit-scrollbar {
+    width: 10px;
+}
+
+.dark-theme ::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb-color);
+    border-radius: 5px;
+}
+
+.dark-theme ::-webkit-scrollbar-track {
+    background-color: var(--scrollbar-track-color);
+}
+
+.dark-theme ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover-color);
+}
+
+#scroll-to-bottom {
+    position: fixed;
+    bottom: 20px; /* 距离底部的距离 */
+    right: 30px; /* 距离右侧的距离 */
+    background-color: var(--button-bg-color);
+    color: var(--button-text-color);
+    border: none;
+    border-radius: 50%; /* 圆形 */
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+    cursor: pointer;
+    z-index: 100; /* 确保在其他内容之上 */
+    display: none; /* 默认隐藏 */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2); /* 添加阴影 */
+    transition: background-color 0.3s;
+}
+
+#scroll-to-bottom:hover {
+    background-color: var(--button-hover-bg-color);
+}
+
+/* 停止按钮样式 */
+#send-button.stop {
+    background-color: #d9534f; /* 红色 */
+}
+
+#send-button.stop:hover {
+    background-color: #c9302c; /* 深红色 */
+}
+
+/* 上传按钮样式 */
+#upload-button {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: none;
+    background-color: #007bff;
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    margin-right: 10px;
+    transition: background-color 0.3s;
+}
+
+#upload-button:hover {
+    background-color: #0056b3;
+}
+
+#upload-button i {
+    font-size: 16px;
+}
+
+/* 上传文件信息显示区域的样式 */
+#uploaded-files-info {
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px dashed var(--border-color);
+    border-radius: 5px;
+    background-color: var(--bg-color);
+    max-height: 200px; /* 设置最大高度 */
+    overflow-y: auto; /* 超出时显示滚动条 */
+    display: none; /*初始隐藏*/
+}
+
+#uploaded-files-info p {
+    margin: 5px 0;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    word-break: break-all; /* 允许长文件名换行 */
+}
+
+/* 图片预览样式 */
+#uploaded-files-info img {
+    max-width: 100px;
+    max-height: 100px;
+    margin-right: 5px;
+    border: 1px solid var(--border-color);
+    vertical-align: middle; /* 图片垂直居中 */
+}
+
+/* 文件删除按钮 */
+.file-delete-btn {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    cursor: pointer;
+    background: red;
+    color: white;
+    border-radius: 50%; /* 滚动条样式（浅色主题） */
+
+    ::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+        background-color: #ccc;
+        border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-track {
+        background-color: #f1f1f1;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+        background-color: #aaa;
+    }
+
+    #chat-container {
+        width: 800px;
+        margin: 20px auto;
+        background: var(--bg-color);
+        border: 1px solid var(--border-color);
+        border-radius: 15px;
+        box-shadow: 0 6px 15px var(--shadow-color);
+        padding: 20px;
+        overflow-y: auto;
+        max-height: calc(100vh - 220px);
+        transition: all 0.3s ease;
+    }
+
+    .message {
+        margin: 15px 0;
+        padding: 15px;
+        border-radius: 12px;
+        max-width: 85%;
+        box-shadow: 0 2px 5px var(--shadow-color);
+        transition: transform 0.2s ease;
+    }
+
+    .message:hover {
+        transform: translateY(-2px);
+    }
+
+    #user-input {
+        flex: 1;
+        padding: 12px;
+        font-size: 1rem;
+        border: 2px solid var(--border-color);
+        border-radius: 8px;
+        resize: none;
+        overflow-y: hidden;
+        line-height: 1.5;
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    #user-input:focus {
+        border-color: #007bff;
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+        outline: none;
+    }
+
+    #send-button {
+        padding: 12px 24px;
+        font-size: 1rem;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    #send-button:hover {
+        background-color: #0056b3;
+        transform: translateY(-1px);
+    }
+
+    #history-container {
+        flex: 1;
+        background: var(--bg-color);
+        border: 1px solid var(--border-color);
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: 0 6px 15px var(--shadow-color);
+        height: calc(100vh - 140px);
+        overflow-y: auto;
+    }
+
+    #history-list li {
+        padding: 12px 15px;
+        margin: 8px 0;
+        cursor: pointer;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+        border-left: 3px solid transparent;
+    }
+
+    #history-list li:hover {
+        background-color: var(--history-hover-bg-color);
+        border-left-color: #007bff;
+    }
+
+    li.active {
+        background-color: rgba(0, 123, 255, 0.1) !important;
+        border-left: 3px solid #007bff !important;
+    }
+
+    pre {
+        position: relative;
+        overflow-x: auto;
+        padding: 16px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        background-color: var(--code-bg-color);
+        margin: 15px 0;
+    }
+
+    pre code {
+        font-family: 'Fira Code', monospace;
+        font-size: 14px;
+        line-height: 1.5;
+    }
+
+    .copy-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        padding: 6px 12px;
+        background-color: rgba(0, 123, 255, 0.9);
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 12px;
+        transition: all 0.2s ease;
+        opacity: 0;
+    }
+
+    pre:hover .copy-btn {
+        opacity: 1;
+    }
+
+    .dark-theme {
+        --bg-color: #1a1a1a;
+        --text-color: #e0e0e0;
+        --header-bg-color: #2d2d2d;
+        --header-text-color: #fff;
+        --message-bg-color: #2d2d2d;
+        --ai-message-bg-color: #363636;
+        --border-color: #404040;
+        --shadow-color: rgba(0, 0, 0, 0.3);
+        --code-bg-color: #282c34;
+        --history-hover-bg-color: #2d2d2d;
+    }
+
+< link href = "https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel = "stylesheet" > width: 20 px;
+    height: 20px;
+    text-align: center;
+    line-height: 18px;
+    font-size: 14px;
+}
+
+/* 文件预览容器 */
+.file-info-container {
+    position: relative;
+    display: inline-block;
+    margin: 5px;
+    padding: 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+}
+
+/* 图片预览 */
+.file-info-container img {
+    max-height: 60px;
+    vertical-align: middle;
+}
+
+/* 用于markdown解析的table属性 */
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+}
+
+th, td {
+    padding: 8px 12px;
+    text-align: left;
+    border: 1px solid var(--border-color);
+}
+
+th {
+    background-color: var(--message-bg-color);
+    font-weight: bold;
+}
+
+tr:nth-child(even) {
+    background-color: var(--ai-message-bg-color);
+}
+
+tr:hover {
+    background-color: var(--history-hover-bg-color);
+}

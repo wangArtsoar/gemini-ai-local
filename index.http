@@ -1,0 +1,45 @@
+### 主页
+GET http://localhost:8000/index
+
+### 历史记录
+GET http://localhost:8000/history
+
+### 根据ID获取历史记录
+PUT http://localhost:8000/findHistory/10
+
+### 切换模型
+GET http://localhost:8000/switchModel?model=?
+
+### 新对话
+GET http://localhost:8000/session/new
+
+### 获取最后一条对话ID
+GET http://localhost:8000/lastSessionID
+
+### 生成标题
+POST http://localhost:8000/generateTitle
+Content-Type: application/json
+
+{
+  "message": "你好",
+  "session_id": 7
+}
+
+### 对话
+POST http://localhost:8000/chat
+Content-Type: application/json
+
+{
+  "message": "你好",
+  "session_id": 0
+}
+
+###
+POST https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=AIzaSyAbYS0Ez49A88wpVA9q599iO_gCYsKs_MI
+Content-Type: application/json
+
+{
+  "contents": [{
+    "parts":[{"text": "Write a story about a magic backpack."}]
+  }]
+}
