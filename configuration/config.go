@@ -22,8 +22,14 @@ var (
 )
 
 type UserInput struct {
-	Message   string `json:"message"`
-	SessionID int    `json:"session_id"`
+	Message   string          `json:"message,omitempty"`
+	SessionID int             `json:"session_id"`
+	Files     []InlineDataDto `json:"files,omitempty"`
+}
+
+type InlineDataDto struct {
+	MimeType string `json:"mime_type"`
+	Data     []byte `json:"data"`
 }
 
 const (
@@ -80,7 +86,7 @@ func InitHistoryDir() error {
                 title TEXT,
                 session_base TEXT NOT NULL,
                 create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_limited INTEGER generated always as (0) virtual not null
+                is_limited INTEGER default 0
             );`,
 		},
 		{
@@ -95,9 +101,19 @@ func InitHistoryDir() error {
 			"part",
 			`CREATE TABLE IF NOT EXISTS part (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                inline_data_id INTEGER,
                 content_id INTEGER NOT NULL,
                 text TEXT NOT NULL,
                 create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );`,
+		},
+		{
+			"inline_data",
+			`CREATE TABLE IF NOT EXISTS inline_data (
+    			id INTEGER PRIMARY KEY AUTOINCREMENT,
+    			part_id INTEGER NOT NULL,
+    			media_type TEXT NOT NULL,
+    			data BLOB NOT NULL
             );`,
 		},
 		{

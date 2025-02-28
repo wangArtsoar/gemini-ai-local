@@ -764,3 +764,29 @@ tr:nth-child(even) {
 tr:hover {
     background-color: var(--history-hover-bg-color);
 }
+
+#select-file-label {
+    cursor: pointer;
+    padding: 8px 12px;
+    border-radius: 4px;
+    color: #666;
+    transition: color 0.2s ease;
+    font-size: 1.2em;
+}
+
+#select-file-label:hover {
+    color: #333;
+}
+
+.image-thumbnail-container {
+    margin: 10px 0;
+}
+
+.image-thumbnail {
+    border-radius: 4px;
+    transition: transform 0.2s;
+}
+
+.image-thumbnail:hover {
+    transform: scale(1.05);
+}

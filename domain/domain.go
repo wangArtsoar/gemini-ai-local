@@ -16,7 +16,13 @@ type RequestBody struct {
 }
 
 type Part struct {
-	Text string `json:"text"`
+	Text       string      `json:"text,omitempty"`
+	InlineData *InlineData `json:"inline_data,omitempty"`
+}
+
+type InlineData struct {
+	MimeType string `json:"mime_type"`
+	Data     []byte `json:"data"`
 }
 
 type Content struct {
@@ -39,16 +45,43 @@ type GeminiResponse struct {
 }
 
 // 准备请求体
-func (r *RequestBody) prepareRequestBody(input string) ([]byte, error) {
-	r.Contents = append(r.Contents, Content{
-		Role: "user",
-		Parts: []Part{
-			{
-				Text: input,
+func (r *RequestBody) prepareRequestBody(input configuration.UserInput) ([]byte, error) {
+	content := Content{
+		Role:  "user",
+		Parts: make([]Part, 0, len(input.Files)+1),
+	}
+
+	// 处理所有图片数据
+	for _, fileBase64 := range input.Files {
+		if fileBase64.MimeType == "" {
+			fileBase64.MimeType = "image/jpeg"
+		}
+		part := Part{
+			InlineData: &InlineData{
+				MimeType: fileBase64.MimeType,
+				Data:     fileBase64.Data,
 			},
-		},
-	})
-	// 序列化请求体
+		}
+		content.Parts = append(content.Parts, part)
+	}
+
+	// 只有在有消息时才添加文本部分
+	if input.Message != "" {
+		textPart := Part{
+			Text: input.Message,
+		}
+		content.Parts = append(content.Parts, textPart)
+	}
+
+	// 如果inlineData中的Data为nil，设置inlineData为空
+	for i := range content.Parts {
+		if content.Parts[i].InlineData != nil && content.Parts[i].InlineData.Data == nil {
+			content.Parts[i].InlineData = nil
+		}
+	}
+
+	r.Contents = append(r.Contents, content)
+
 	body, err := json.Marshal(r)
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling request body: %v", err)
@@ -58,6 +91,12 @@ func (r *RequestBody) prepareRequestBody(input string) ([]byte, error) {
 
 // 发送请求并返回响应
 func (r *RequestBody) sendRequest(body []byte) (*http.Response, error) {
+	//var prettyJSON bytes.Buffer
+	//if err := json.Indent(&prettyJSON, body, "", "    "); err != nil {
+	//	log.Printf("Failed to format request body: %v", err)
+	//} else {
+	//	log.Printf("Request body:\n%s", prettyJSON.String())
+	//}
 	req, err := http.NewRequest("POST", configuration.AIApi, bytes.NewBuffer(body))
 	if err != nil {
 		return nil, fmt.Errorf("error creating request: %v", err)

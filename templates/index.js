@@ -90,9 +90,36 @@ async function sendMessage() {
     const inputField = document.getElementById("user-input");
     const chatContainer = document.getElementById("chat-container");
     const sendButton = document.getElementById("send-button");
+    const fileInput = document.getElementById("file-input");
+    const uploadedFilesInfo = document.getElementById("uploaded-files-info");
 
     const userMessage = inputField.value.trim();
+
     if (!userMessage) return;
+
+    let files = fileInput?.files
+    let fileBase64s = [];  // Store image objects
+
+    // Process images if files exist
+    if (files) {
+        for (let i = 0; i < files.length; i++) {
+            if (files[i].type.startsWith("image/")) {
+                const reader = new FileReader();
+                reader.readAsDataURL(files[i]);
+                await new Promise((resolve) => {
+                    reader.onload = function () {
+                        fileBase64s.push({
+                            mimeType: files[i].type,
+                            data: reader.result.split(',')[1] // Remove data URL prefix
+                        });
+                        resolve();
+                    };
+                });
+            }
+        }
+    }
+
+    console.log(fileBase64s)
 
     disableInputAndButton(inputField, sendButton, "Stop");
 
@@ -100,18 +127,36 @@ async function sendMessage() {
     const conversationContainer = createConversationContainer(userMessage);
     chatContainer.appendChild(conversationContainer);
 
+    if (uploadedFilesInfo) {
+        uploadedFilesInfo.innerHTML = ""
+        uploadedFilesInfo.style.display = "none"; // Hide the file info container
+    }
     // Create and show AI message container immediately
     const {aiMessageElement, aiMessageElementOnCopy} = createAIMessageElements(conversationContainer);
     aiMessageElement.textContent = "AI is thinking...";
 
     scrollToBottom(chatContainer);
-    inputField.value = "";
+    inputField.value = ""; // Clear the input field
+    if (fileInput) {
+        // Create permanent URLs for images before clearing input
+        Array.from(fileInput.files).forEach(file => {
+            if (file.type.startsWith('image/')) {
+                const permanentUrl = URL.createObjectURL(file);
+                // Store the URL to be revoked later when no longer needed
+                if (!window.uploadedImageUrls) {
+                    window.uploadedImageUrls = [];
+                }
+                window.uploadedImageUrls.push(permanentUrl);
+            }
+        });
+        fileInput.value = ""; // Clear the file input
+    }
 
     try {
         let sessionId = getSessionId();
         let flag = !sessionId;
 
-        const chatResponse = await fetchChatResponse(userMessage, sessionId);
+        const chatResponse = await fetchChatResponse(userMessage, sessionId, fileBase64s);
         if (!chatResponse.ok) {
             if (chatResponse.status === 429) {
                 disableUIForRateLimit(inputField, sendButton);
@@ -135,6 +180,7 @@ async function sendMessage() {
         handleError(conversationContainer, error);
     } finally {
         enableInputAndButton(inputField, sendButton, "Send");
+        await loadHistoryById(getSessionId(), "");
     }
 }
 
@@ -184,19 +230,62 @@ function createConversationContainer(userMessage) {
 
     const userMessageElement = document.createElement("div");
     userMessageElement.className = "message user-message";
-    userMessageElement.textContent = userMessage;
-    // userMessageElement.style.width = "auto";
     userMessageElement.style.whiteSpace = "pre-wrap";
+
+    // Handle the text message
+    const textDiv = document.createElement("div");
+    textDiv.textContent = userMessage;
+    userMessageElement.appendChild(textDiv);
+
+    // Handle images from file input
+    const fileInput = document.getElementById("file-input");
+    if (fileInput && fileInput.files.length > 0) {
+        Array.from(fileInput.files).forEach(file => {
+            if (file.type.startsWith("image/")) {
+                const imgContainer = document.createElement("div");
+                imgContainer.className = "image-thumbnail-container";
+
+                const img = document.createElement("img");
+                img.src = URL.createObjectURL(file);
+                img.className = "image-thumbnail";
+                img.style.maxWidth = "200px";
+                img.style.maxHeight = "200px";
+                img.style.cursor = "pointer";
+
+                img.onclick = () => {
+                    const fullImg = window.open("", "_blank");
+                    fullImg.document.write(`
+                        <html>
+                            <head>
+                                <title>Full Size Image</title>
+                                <style>
+                                    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; }
+                                    img { max-width: 100%; max-height: 100vh; object-fit: contain; }
+                                </style>
+                            </head>
+                            <body>
+                                <img src="${img.src}">
+                            </body>
+                        </html>
+                    `);
+                };
+
+                img.onload = () => URL.revokeObjectURL(img.src);
+                imgContainer.appendChild(img);
+                userMessageElement.appendChild(imgContainer);
+            }
+        });
+    }
 
     conversationContainer.appendChild(userMessageElement);
     return conversationContainer;
 }
 
-async function fetchChatResponse(userMessage, sessionId) {
+async function fetchChatResponse(userMessage, sessionId, fileBase64s) {
     return fetch("/chat", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({message: userMessage, session_id: sessionId}),
+        body: JSON.stringify({message: userMessage, session_id: sessionId, files: fileBase64s}),
     });
 }
 
@@ -496,39 +585,110 @@ async function updateChatUI(id, historyData) {
         const conversationContainer = document.createElement("div");
         conversationContainer.className = "conversation";
 
-        // 合并 parts 的 text 内容
-        const messageText = content.parts.map(part => part.text).join(" ");
-
         const messageElement = document.createElement("div");
         messageElement.className = `message ${content.role === "user" ? "user-message" : "ai-message"}`;
 
         if (content.role === "user") {
             messageElement.style.whiteSpace = "pre-wrap"; // 保留换行和空格
-            // 用户消息直接添加文本
-            messageElement.textContent = messageText;
-            lastUserMessage = messageText; // 记录用户输入
+            content.parts.forEach(part => {
+                if (part.text) {
+                    const textDiv = document.createElement("div");
+                    textDiv.textContent = part.text;
+                    messageElement.appendChild(textDiv);
+                    lastUserMessage = part.text;
+                }
+                if (part.inline_data) {
+                    const imgContainer = document.createElement("div");
+                    imgContainer.className = "image-thumbnail-container";
+
+                    const img = document.createElement("img");
+                    img.src = `data:${part.inline_data.mime_type};base64,${part.inline_data.data}`;
+                    img.className = "image-thumbnail";
+                    img.style.maxWidth = "200px";
+                    img.style.maxHeight = "200px";
+                    img.style.cursor = "pointer";
+
+                    // 点击图片放大查看
+                    img.onclick = () => {
+                        const fullImg = window.open("", "_blank");
+                        fullImg.document.write(`
+                            <html>
+                                <head>
+                                    <title>Full Size Image</title>
+                                    <style>
+                                        body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; }
+                                        img { max-width: 100%; max-height: 100vh; object-fit: contain; }
+                                    </style>
+                                </head>
+                                <body>
+                                    <img src="${img.src}">
+                                </body>
+                            </html>
+                        `);
+                    };
+
+                    imgContainer.appendChild(img);
+                    messageElement.appendChild(imgContainer);
+                }
+            });
             conversationContainer.appendChild(messageElement);
         } else if (content.role === "model") {
-            // AI 消息支持 Markdown 渲染
             const aiMessageElementOnCopy = document.createElement("div");
             aiMessageElementOnCopy.className = "message copy ai-message";
             aiMessageElementOnCopy.style.display = "none";
-            aiMessageElementOnCopy.textContent = messageText;
 
-            // 同步解析Markdown
-            messageElement.innerHTML = marked.parse(messageText);
+            content.parts.forEach(part => {
+                if (part.text) {
+                    messageElement.innerHTML += marked.parse(part.text);
+                    aiMessageElementOnCopy.textContent += part.text;
+                }
+                if (part.inline_data) {
+                    const imgContainer = document.createElement("div");
+                    imgContainer.className = "image-thumbnail-container";
+
+                    const img = document.createElement("img");
+                    img.src = `data:${part.inline_data.mime_type};base64,${part.inline_data.data}`;
+                    img.className = "image-thumbnail";
+                    img.style.maxWidth = "200px";
+                    img.style.maxHeight = "200px";
+                    img.style.cursor = "pointer";
+
+                    img.onclick = () => {
+                        const fullImg = window.open("", "_blank");
+                        fullImg.document.write(`
+                            <html>
+                                <head>
+                                    <title>Full Size Image</title>
+                                    <style>
+                                        body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; }
+                                        img { max-width: 100%; max-height: 100vh; object-fit: contain; }
+                                    </style>
+                                </head>
+                                <body>
+                                    <img src="${img.src}">
+                                </body>
+                            </html>
+                        `);
+                    };
+
+                    imgContainer.appendChild(img);
+                    messageElement.appendChild(imgContainer);
+                }
+            });
 
             // 手动执行代码高亮
             const codeBlocks = messageElement.querySelectorAll('pre code');
             codeBlocks.forEach(block => {
                 hljs.highlightElement(block);
             });
-            chatContainer.scrollTop = chatContainer.scrollHeight; //移动到这里，执行完高亮之后再移动滚动条。
+
+            chatContainer.scrollTop = chatContainer.scrollHeight;
             conversationContainer.appendChild(messageElement);
             addButtons(messageElement, aiMessageElementOnCopy, lastUserMessage);
         }
         chatContainer.appendChild(conversationContainer);
     });
+
     await checkAndDisableUIForRateLimit(id, document.getElementById("send-button"));
     // 滚动条保持在底部
     chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -545,19 +705,21 @@ async function loadHistoryById(id, title) {
         }
         const historyData = await response.json();
 
-        // 将title转换为字符串并去掉换行符
-        title = String(title);
-        title = title.replace(/\n/g, "");
+        if (title !== "") {
+            // 将title转换为字符串并去掉换行符
+            title = String(title);
+            title = title.replace(/\n/g, "");
 
-        console.log(Array.from(title).length);
-        // 补充标题至40个字符
-        while (Array.from(title).length < 40) {
-            title += ' ';
+            console.log(Array.from(title).length);
+            // 补充标题至40个字符
+            while (Array.from(title).length < 40) {
+                title += ' ';
+            }
+
+            // 设置当前对话标题
+            document.getElementById("conversation-title").textContent = title || "AI Chat";
+            document.getElementById("conversation-title").style.whiteSpace = "nowrap";
         }
-
-        // 设置当前对话标题
-        document.getElementById("conversation-title").textContent = title || "AI Chat";
-        document.getElementById("conversation-title").style.whiteSpace = "nowrap";
 
         // 更新聊天界面
         await updateChatUI(id, historyData);
@@ -624,17 +786,15 @@ function updateHistoryList(historyData) {
     if (historyData && Array.isArray(historyData)) {
         historyData.forEach(item => {
             const li = document.createElement("li");
-            // 为每个历史记录项添加 sessionId 到 data 属性
             li.dataset.sessionId = item.session_id;
+
             // 省略号按钮（...）
             const moreButton = document.createElement("button");
             moreButton.innerHTML = "..."; // 使用三个点表示
             moreButton.style.marginRight = "10px"; // 按钮与标题之间的间距
             moreButton.addEventListener("click", (event) => {
-                // 防止点击更多按钮时触发加载历史
                 event.stopPropagation();
 
-                // 弹出菜单或执行其他操作（比如编辑和删除）
                 const menu = document.createElement("div");
                 menu.style.position = "absolute";
                 menu.style.backgroundColor = "#fff";
@@ -664,7 +824,6 @@ function updateHistoryList(historyData) {
 
                 document.body.appendChild(menu);
 
-                // 点击外部关闭菜单
                 document.addEventListener("click", () => {
                     menu.remove();
                 }, {once: true});
@@ -683,7 +842,6 @@ function updateHistoryList(historyData) {
 
             // 点击列表项加载历史记录
             li.addEventListener("click", (event) => {
-                // 阻止点击省略号按钮时触发加载历史
                 if (event.target === moreButton) return;
                 loadHistoryById(item.session_id, item.title.toString());
             });

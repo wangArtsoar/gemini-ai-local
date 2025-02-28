@@ -133,8 +133,8 @@ func GetSessionTitle(input configuration.UserInput) (*Title, error) {
 		title.Text = input.Message
 	} else {
 		// 请求AI生成标题
-		titleMessage := input.Message + "\n，请根据这段文字帮我起一个标题，不超过26个字符，直接给出一个，不要添加任何信息，后面不要加换行"
-		resp, err := PostRequestOnClient(titleMessage)
+		input.Message = input.Message + "\n，请根据这段文字帮我起一个标题，不超过26个字符，直接给出一个，不要添加任何信息，后面不要加换行"
+		resp, err := PostRequestOnClient(input)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get title from AI: %w", err)
 		}
@@ -172,6 +172,7 @@ func GetSessionTitle(input configuration.UserInput) (*Title, error) {
 	return title, nil
 }
 
+// Chat
 func Chat(input configuration.UserInput, db *sql.DB, w http.ResponseWriter) error {
 	session, err := FindSessionByID(db, int64(input.SessionID))
 	if err != nil {
@@ -188,81 +189,95 @@ func Chat(input configuration.UserInput, db *sql.DB, w http.ResponseWriter) erro
 		var requestBody RequestBody
 		var sessionLastId = int64(input.SessionID)
 
+		// TODO 支持图片
+		//if session != nil {
+		//	sqlStmtContent := `
+		//        SELECT role, p.text
+		//        FROM content
+		//        JOIN part p ON content.id = p.content_id
+		//        WHERE session_id = ?
+		//        ORDER BY p.create_at
+		//    `
+		//	rows, err := db.Query(sqlStmtContent, input.SessionID)
+		//	if err != nil {
+		//		return fmt.Errorf("failed to query content: %w", err)
+		//	}
+		//	defer rows.Close()
+		//
+		//	type tempContent struct {
+		//		Role string
+		//		Text string
+		//	}
+		//
+		//	var tempContents []*tempContent
+		//	for rows.Next() {
+		//		var content tempContent
+		//		if err := rows.Scan(&content.Role, &content.Text); err != nil {
+		//			return fmt.Errorf("failed to scan row: %w", err)
+		//		}
+		//		tempContents = append(tempContents, &content)
+		//	}
+		//
+		//	if err := rows.Err(); err != nil {
+		//		return fmt.Errorf("rows iteration error: %w", err)
+		//	}
+		//
+		//	contentMap := make(map[string]*Content)
+		//	var mu sync.Mutex
+		//	var wg sync.WaitGroup
+		//
+		//	// 使用 Goroutine 池来控制并发
+		//	jobChan := make(chan *tempContent, len(tempContents))
+		//	resultChan := make(chan map[string]*Content, 1)
+		//
+		//	// 启动 worker
+		//	numWorkers := 10 // 根据实际情况调整 worker 数量
+		//	wg.Add(numWorkers)
+		//	for i := 0; i < numWorkers; i++ {
+		//		go func() {
+		//			defer wg.Done()
+		//			for temp := range jobChan {
+		//				mu.Lock()
+		//				if _, exists := contentMap[temp.Role]; exists {
+		//					contentMap[temp.Role].Parts = append(contentMap[temp.Role].Parts, Part{Text: temp.Text})
+		//				} else {
+		//					contentMap[temp.Role] = &Content{
+		//						Parts: []Part{{Text: temp.Text}},
+		//						Role:  temp.Role,
+		//					}
+		//				}
+		//				mu.Unlock()
+		//			}
+		//		}()
+		//	}
+		//
+		//	// 将任务放入 jobChan
+		//	for _, temp := range tempContents {
+		//		jobChan <- temp
+		//	}
+		//	close(jobChan) // 关闭 channel，通知 worker 没有更多任务了
+		//
+		//	wg.Wait()
+		//	close(resultChan)
+		//
+		//	// 构建最终的 RequestBody
+		//	for _, content := range contentMap {
+		//		requestBody.Contents = append(requestBody.Contents, *content)
+		//	}
+		//
+		//} else {
+		//	sessionLastId, err = saveSession(ctx, tx)
+		//	if err != nil {
+		//		return err
+		//	}
+		//}
+
 		if session != nil {
-			sqlStmtContent := `
-                SELECT role, p.text
-                FROM content 
-                JOIN part p ON content.id = p.content_id
-                WHERE session_id = ? 
-                ORDER BY p.create_at
-            `
-			rows, err := db.Query(sqlStmtContent, input.SessionID)
+			history, err := FindHistoryBySessionID(db, int64(input.SessionID))
 			if err != nil {
-				return fmt.Errorf("failed to query content: %w", err)
+				return fmt.Errorf("failed to get history: %w", err)
 			}
-			defer rows.Close()
-
-			type tempContent struct {
-				Role string
-				Text string
-			}
-
-			var tempContents []*tempContent
-			for rows.Next() {
-				var content tempContent
-				if err := rows.Scan(&content.Role, &content.Text); err != nil {
-					return fmt.Errorf("failed to scan row: %w", err)
-				}
-				tempContents = append(tempContents, &content)
-			}
-
-			if err := rows.Err(); err != nil {
-				return fmt.Errorf("rows iteration error: %w", err)
-			}
-
-			contentMap := make(map[string]*Content)
-			var mu sync.Mutex
-			var wg sync.WaitGroup
-
-			// 使用 Goroutine 池来控制并发
-			jobChan := make(chan *tempContent, len(tempContents))
-			resultChan := make(chan map[string]*Content, 1)
-
-			// 启动 worker
-			numWorkers := 10 // 根据实际情况调整 worker 数量
-			wg.Add(numWorkers)
-			for i := 0; i < numWorkers; i++ {
-				go func() {
-					defer wg.Done()
-					for temp := range jobChan {
-						mu.Lock()
-						if _, exists := contentMap[temp.Role]; exists {
-							contentMap[temp.Role].Parts = append(contentMap[temp.Role].Parts, Part{Text: temp.Text})
-						} else {
-							contentMap[temp.Role] = &Content{
-								Parts: []Part{{Text: temp.Text}},
-								Role:  temp.Role,
-							}
-						}
-						mu.Unlock()
-					}
-				}()
-			}
-
-			// 将任务放入 jobChan
-			for _, temp := range tempContents {
-				jobChan <- temp
-			}
-			close(jobChan) // 关闭 channel，通知 worker 没有更多任务了
-
-			wg.Wait()
-			close(resultChan)
-
-			// 构建最终的 RequestBody
-			for _, content := range contentMap {
-				requestBody.Contents = append(requestBody.Contents, *content)
-			}
-
+			requestBody = *history
 		} else {
 			sessionLastId, err = saveSession(ctx, tx)
 			if err != nil {
@@ -270,12 +285,12 @@ func Chat(input configuration.UserInput, db *sql.DB, w http.ResponseWriter) erro
 			}
 		}
 
-		body, err := requestBody.prepareRequestBody(input.Message)
+		body, err := requestBody.prepareRequestBody(input)
 		if err != nil {
 			return err
 		}
 
-		if err := saveHistory(ctx, tx, sessionLastId, "user", input.Message); err != nil {
+		if err := saveHistory(ctx, tx, sessionLastId, "user", input); err != nil {
 			log.Printf("保存用户历史记录失败: %v", err)
 			return err
 		}
@@ -355,8 +370,8 @@ func saveSession(ctx context.Context, tx *sql.Tx) (int64, error) {
 	return insertId, nil
 }
 
-func PostRequestOnClient(message string) (*http.Response, error) {
-	body, err := new(RequestBody).prepareRequestBody(message)
+func PostRequestOnClient(input configuration.UserInput) (*http.Response, error) {
+	body, err := new(RequestBody).prepareRequestBody(input)
 	if err != nil {
 		return nil, err
 	}
@@ -378,22 +393,63 @@ func PostRequestOnClient(message string) (*http.Response, error) {
 	return resp, nil
 }
 
-func saveHistory(ctx context.Context, tx *sql.Tx, sessionID int64, role, text string) error {
-	contentResult, err := tx.ExecContext(ctx, "INSERT INTO content (session_id, role) VALUES (?, ?)",
-		sessionID, role)
+func saveHistory(ctx context.Context, tx *sql.Tx, sessionID int64, role string, input interface{}) error {
+	var message string
+	var files []configuration.InlineDataDto
+
+	// Type assertion to handle both string and UserInput
+	switch v := input.(type) {
+	case string:
+		message = v
+	case configuration.UserInput:
+		message = v.Message
+		files = v.Files
+	default:
+		return fmt.Errorf("unsupported input type: %T", input)
+	}
+
+	// Insert content with role
+	contentResult, err := tx.ExecContext(ctx, "INSERT INTO content (session_id, role) VALUES (?, ?)", sessionID, role)
 	if err != nil {
-		return fmt.Errorf("inserting content: %w", err)
+		return fmt.Errorf("failed to insert content: %w", err)
 	}
 
 	contentID, err := contentResult.LastInsertId()
 	if err != nil {
-		return fmt.Errorf("getting last insert id for content: %w", err)
+		return fmt.Errorf("failed to get content ID: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, "INSERT INTO part (content_id, text, create_at) VALUES (?, ?, ?)",
-		contentID, text, time.Now())
+	// Insert part with text
+	partResult, err := tx.ExecContext(ctx,
+		"INSERT INTO part (content_id, text, create_at) VALUES (?, ?, ?)",
+		contentID, message, time.Now())
 	if err != nil {
-		return fmt.Errorf("inserting part: %w", err)
+		return fmt.Errorf("failed to insert part: %w", err)
+	}
+
+	// Handle file attachments if present
+	if len(files) > 0 {
+		partID, err := partResult.LastInsertId()
+		if err != nil {
+			return fmt.Errorf("failed to get part ID: %w", err)
+		}
+
+		// Prepare statement for multiple file inserts
+		stmt, err := tx.PrepareContext(ctx,
+			"INSERT INTO inline_data (part_id, media_type, data) VALUES (?, ?, ?)")
+		if err != nil {
+			return fmt.Errorf("failed to prepare statement: %w", err)
+		}
+		defer stmt.Close()
+
+		for _, file := range files {
+			if file.MimeType == "" {
+				file.MimeType = "image/jpeg"
+			}
+			if _, err := stmt.ExecContext(ctx, partID, file.MimeType, file.Data); err != nil {
+				return fmt.Errorf("failed to insert file data: %w", err)
+			}
+		}
 	}
 
 	return nil
@@ -401,13 +457,14 @@ func saveHistory(ctx context.Context, tx *sql.Tx, sessionID int64, role, text st
 
 func FindHistoryBySessionID(db *sql.DB, sessionID int64) (*RequestBody, error) {
 	sqlHistory := `
-		select s.id,c.id,c.role,p.text 
-		from session s 
-		left join content c on c.session_id = s.id
-		left join part p on c.id = p.content_id
-		where s.id = ?
-		order by p.create_at 
-	`
+	SELECT s.id, c.id, c.role, p.text, id.data, id.media_type
+	FROM session s 
+	LEFT JOIN content c ON c.session_id = s.id
+	LEFT JOIN part p ON c.id = p.content_id
+	LEFT JOIN inline_data id ON p.id = id.part_id
+	WHERE s.id = ?
+	ORDER BY p.create_at 
+`
 
 	rows, err := db.Query(sqlHistory, sessionID)
 	if err != nil {
@@ -417,16 +474,18 @@ func FindHistoryBySessionID(db *sql.DB, sessionID int64) (*RequestBody, error) {
 	defer rows.Close()
 
 	type result struct {
-		SessionID int64
-		ContentID int64
-		Role      string
-		Text      string
+		SessionID  int64
+		ContentID  int64
+		Role       string
+		Text       string
+		InlineData []byte
+		MediaType  sql.NullString
 	}
 
 	var results []result
 	for rows.Next() {
 		var res result
-		err = rows.Scan(&res.SessionID, &res.ContentID, &res.Role, &res.Text)
+		err = rows.Scan(&res.SessionID, &res.ContentID, &res.Role, &res.Text, &res.InlineData, &res.MediaType)
 		if err != nil {
 			return nil, err
 		}
@@ -452,7 +511,18 @@ func FindHistoryBySessionID(db *sql.DB, sessionID int64) (*RequestBody, error) {
 			}
 			contentMap[res.ContentID] = content
 		}
-		content.Parts = append(content.Parts, Part{Text: res.Text})
+		part1 := Part{Text: res.Text}
+		content.Parts = append(content.Parts, part1)
+
+		if res.InlineData != nil {
+			part2 := Part{}
+			part2.InlineData = &InlineData{
+				Data:     res.InlineData,
+				MimeType: res.MediaType.String,
+			}
+			content.Parts = append(content.Parts, part2)
+		}
+
 		requestBody.Contents = append(requestBody.Contents, content)
 	}
 

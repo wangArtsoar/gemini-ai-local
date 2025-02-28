@@ -1,6 +1,8 @@
 function handleFiles(files) {
     const chatContainer = document.getElementById("chat-container");
     const uploadedInfoDiv = document.createElement("div");
+
+    chatContainer.style.display = "block";
     uploadedInfoDiv.id = "uploaded-files-info";
     uploadedInfoDiv.style.display = "block";
 

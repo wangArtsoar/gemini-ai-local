@@ -212,11 +212,6 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if userInput.Message == "" {
-		http.Error(w, "Message field is required", http.StatusBadRequest)
-		return
-	}
-
 	if err := domain.Chat(userInput, configuration.DB, w); err != nil {
 		log.Println(err)
 		http.Error(w, "Server error: "+err.Error(), configuration.HttpState)
