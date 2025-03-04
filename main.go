@@ -16,6 +16,7 @@ import (
 	clog "github.com/Dreamacro/clash/log"
 	"github.com/getlantern/systray"
 	"github.com/joho/godotenv"
+	"github.com/lxn/walk"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/skratchdot/open-golang/open"
 	"github.com/wangArtsoar/gemini-ai/configuration"
@@ -32,13 +33,15 @@ import (
 //go:embed templates/*.* templates/static/.env templates/static/config.yaml templates/static/favicon.ico sqlite-amalgamation-3490100/* favicon.ico
 var fs embed.FS
 
-func init() {
-	fmt.Println(fmt.Sprint(`使用的AI : Google Gemini
+// 全局变量，存储选中的项目简介
+var selectedDescription string = fmt.Sprintln(fmt.Sprint(`使用的AI : Google Gemini
 作者 : xiaoyi
 编程语言 : Go、JS
 
 本程序仅作为学习探讨
 	`))
+
+func init() {
 	readFile, err := fs.ReadFile("templates/static/.env")
 	if err != nil {
 		panic(err)
@@ -104,6 +107,15 @@ func main() {
 	systray.Run(onReady, onExit)
 }
 
+// 显示项目简介的函数 (使用 walk 库创建对话框)
+func showProjectDescription() {
+	if walk.MsgBox(nil, "项目简介",
+		selectedDescription,
+		walk.MsgBoxOK|walk.MsgBoxIconInformation) != walk.DlgCmdOK {
+		return
+	}
+}
+
 func onReady() {
 	iconBytes, err := fs.ReadFile("templates/static/favicon.ico")
 	if err != nil {
@@ -116,6 +128,8 @@ func onReady() {
 
 	// 添加菜单项
 	mOpen := systray.AddMenuItem("打开界面", "打开Web界面")
+	// 添加 "项目简介" 菜单项
+	mDescription := systray.AddMenuItem("项目简介", "显示项目简介")
 	systray.AddSeparator()
 	mQuit := systray.AddMenuItem("退出", "关闭应用")
 
@@ -152,6 +166,9 @@ func onReady() {
 			select {
 			case <-mOpen.ClickedCh:
 				_ = open.Run(api)
+			case <-mDescription.ClickedCh:
+				// 点击 "项目简介" 菜单项时，显示简介
+				showProjectDescription()
 			case <-mQuit.ClickedCh:
 				systray.Quit()
 				return

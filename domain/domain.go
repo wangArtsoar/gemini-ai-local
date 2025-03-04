@@ -53,16 +53,12 @@ func (r *RequestBody) prepareRequestBody(input configuration.UserInput) ([]byte,
 
 	// 处理所有图片数据
 	for _, fileBase64 := range input.Files {
-		if fileBase64.MimeType == "" {
-			fileBase64.MimeType = "image/jpeg"
-		}
-		part := Part{
+		content.Parts = append(content.Parts, Part{
 			InlineData: &InlineData{
 				MimeType: fileBase64.MimeType,
 				Data:     fileBase64.Data,
 			},
-		}
-		content.Parts = append(content.Parts, part)
+		})
 	}
 
 	// 只有在有消息时才添加文本部分

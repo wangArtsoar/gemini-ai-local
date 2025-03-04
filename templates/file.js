@@ -27,7 +27,13 @@ function handleFiles(files) {
         const deleteBtn = document.createElement("button");
         deleteBtn.className = "file-delete-btn";
         deleteBtn.innerHTML = "×";
-        deleteBtn.onclick = () => fileContainer.remove();
+        deleteBtn.onclick = () => {
+            fileContainer.remove();
+            if (uploadedInfoDiv.children.length === 0) {
+                uploadedInfoDiv.style.display = "none";
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+        }
         fileContainer.appendChild(deleteBtn);
 
         uploadedInfoDiv.appendChild(fileContainer);
@@ -40,4 +46,16 @@ function formatFileSize(bytes) {
     if (bytes < 1024) return bytes + " B";
     else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
     else return (bytes / 1048576).toFixed(1) + " MB";
+}
+
+function handlePaste(event) {
+    const items = event.clipboardData.items;
+    for (let item of items) {
+        if (item.kind === 'file') {
+            const file = item.getAsFile();
+            handleFiles([file]);
+            event.preventDefault();
+            return;
+        }
+    }
 }

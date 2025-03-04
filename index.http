@@ -31,15 +31,28 @@ Content-Type: application/json
 
 {
   "message": "你好",
-  "session_id": 0
+  "session_id": 0,
+  "files": [
+    {
+      "mime_type": "image/jpeg",
+      "data": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/4QA6RXhpZgAATU0AKgAAAAgAA1IBAAABAAEA..."
+    }
+  ]
 }
 
 ###
-POST https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:streamGenerateContent?alt=sse&key=AIzaSyAbYS0Ez49A88wpVA9q599iO_gCYsKs_MI
+POST https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:streamGenerateContent?alt=sse&
+    key=AIzaSyAbYS0Ez49A88wpVA9q599iO_gCYsKs_MI
 Content-Type: application/json
 
 {
-  "contents": [{
-    "parts":[{"text": "Write a story about a magic backpack."}]
-  }]
+  "contents": [
+    {
+      "parts": [
+        {
+          "text": "Write a story about a magic backpack."
+        }
+      ]
+    }
+  ]
 }

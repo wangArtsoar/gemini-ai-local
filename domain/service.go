@@ -12,6 +12,7 @@ import (
 	"github.com/wangArtsoar/gemini-ai/gemini_util"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -172,7 +173,7 @@ func GetSessionTitle(input configuration.UserInput) (*Title, error) {
 	return title, nil
 }
 
-// Chat
+// Chat 对话
 func Chat(input configuration.UserInput, db *sql.DB, w http.ResponseWriter) error {
 	session, err := FindSessionByID(db, int64(input.SessionID))
 	if err != nil {
@@ -188,89 +189,6 @@ func Chat(input configuration.UserInput, db *sql.DB, w http.ResponseWriter) erro
 	err = retryTransaction(db, ctx, func(tx *sql.Tx) error {
 		var requestBody RequestBody
 		var sessionLastId = int64(input.SessionID)
-
-		// TODO 支持图片
-		//if session != nil {
-		//	sqlStmtContent := `
-		//        SELECT role, p.text
-		//        FROM content
-		//        JOIN part p ON content.id = p.content_id
-		//        WHERE session_id = ?
-		//        ORDER BY p.create_at
-		//    `
-		//	rows, err := db.Query(sqlStmtContent, input.SessionID)
-		//	if err != nil {
-		//		return fmt.Errorf("failed to query content: %w", err)
-		//	}
-		//	defer rows.Close()
-		//
-		//	type tempContent struct {
-		//		Role string
-		//		Text string
-		//	}
-		//
-		//	var tempContents []*tempContent
-		//	for rows.Next() {
-		//		var content tempContent
-		//		if err := rows.Scan(&content.Role, &content.Text); err != nil {
-		//			return fmt.Errorf("failed to scan row: %w", err)
-		//		}
-		//		tempContents = append(tempContents, &content)
-		//	}
-		//
-		//	if err := rows.Err(); err != nil {
-		//		return fmt.Errorf("rows iteration error: %w", err)
-		//	}
-		//
-		//	contentMap := make(map[string]*Content)
-		//	var mu sync.Mutex
-		//	var wg sync.WaitGroup
-		//
-		//	// 使用 Goroutine 池来控制并发
-		//	jobChan := make(chan *tempContent, len(tempContents))
-		//	resultChan := make(chan map[string]*Content, 1)
-		//
-		//	// 启动 worker
-		//	numWorkers := 10 // 根据实际情况调整 worker 数量
-		//	wg.Add(numWorkers)
-		//	for i := 0; i < numWorkers; i++ {
-		//		go func() {
-		//			defer wg.Done()
-		//			for temp := range jobChan {
-		//				mu.Lock()
-		//				if _, exists := contentMap[temp.Role]; exists {
-		//					contentMap[temp.Role].Parts = append(contentMap[temp.Role].Parts, Part{Text: temp.Text})
-		//				} else {
-		//					contentMap[temp.Role] = &Content{
-		//						Parts: []Part{{Text: temp.Text}},
-		//						Role:  temp.Role,
-		//					}
-		//				}
-		//				mu.Unlock()
-		//			}
-		//		}()
-		//	}
-		//
-		//	// 将任务放入 jobChan
-		//	for _, temp := range tempContents {
-		//		jobChan <- temp
-		//	}
-		//	close(jobChan) // 关闭 channel，通知 worker 没有更多任务了
-		//
-		//	wg.Wait()
-		//	close(resultChan)
-		//
-		//	// 构建最终的 RequestBody
-		//	for _, content := range contentMap {
-		//		requestBody.Contents = append(requestBody.Contents, *content)
-		//	}
-		//
-		//} else {
-		//	sessionLastId, err = saveSession(ctx, tx)
-		//	if err != nil {
-		//		return err
-		//	}
-		//}
 
 		if session != nil {
 			history, err := FindHistoryBySessionID(db, int64(input.SessionID))
@@ -457,7 +375,7 @@ func saveHistory(ctx context.Context, tx *sql.Tx, sessionID int64, role string, 
 
 func FindHistoryBySessionID(db *sql.DB, sessionID int64) (*RequestBody, error) {
 	sqlHistory := `
-	SELECT s.id, c.id, c.role, p.text, id.data, id.media_type
+	SELECT s.id, c.id, c.role, p.id,p.text, id.data, id.media_type
 	FROM session s 
 	LEFT JOIN content c ON c.session_id = s.id
 	LEFT JOIN part p ON c.id = p.content_id
@@ -477,6 +395,7 @@ func FindHistoryBySessionID(db *sql.DB, sessionID int64) (*RequestBody, error) {
 		SessionID  int64
 		ContentID  int64
 		Role       string
+		PartID     int64
 		Text       string
 		InlineData []byte
 		MediaType  sql.NullString
@@ -485,7 +404,7 @@ func FindHistoryBySessionID(db *sql.DB, sessionID int64) (*RequestBody, error) {
 	var results []result
 	for rows.Next() {
 		var res result
-		err = rows.Scan(&res.SessionID, &res.ContentID, &res.Role, &res.Text, &res.InlineData, &res.MediaType)
+		err = rows.Scan(&res.SessionID, &res.ContentID, &res.Role, &res.PartID, &res.Text, &res.InlineData, &res.MediaType)
 		if err != nil {
 			return nil, err
 		}
@@ -499,7 +418,7 @@ func FindHistoryBySessionID(db *sql.DB, sessionID int64) (*RequestBody, error) {
 
 	var requestBody RequestBody
 	contentMap := make(map[int64]Content)
-
+	partMap := make(map[int64]Part)
 	for _, res := range results {
 		// 检查 Content 是否已存在
 		content, ok := contentMap[res.ContentID]
@@ -511,21 +430,40 @@ func FindHistoryBySessionID(db *sql.DB, sessionID int64) (*RequestBody, error) {
 			}
 			contentMap[res.ContentID] = content
 		}
-		part1 := Part{Text: res.Text}
-		content.Parts = append(content.Parts, part1)
-
+		part1, ok := partMap[res.PartID]
+		if !ok {
+			part1 = Part{Text: res.Text}
+			content.Parts = append(content.Parts, part1)
+		}
 		if res.InlineData != nil {
 			part2 := Part{}
 			part2.InlineData = &InlineData{
 				Data:     res.InlineData,
 				MimeType: res.MediaType.String,
 			}
-			content.Parts = append(content.Parts, part2)
+			content.Parts = append([]Part{part2}, content.Parts...)
 		}
 
-		requestBody.Contents = append(requestBody.Contents, content)
+		// Update the content in the map
+		contentMap[res.ContentID] = content
+	}
+	// Convert map to slice
+	// Create a slice of content IDs for sorting
+	contentIDs := make([]int64, 0, len(contentMap))
+	for id := range contentMap {
+		contentIDs = append(contentIDs, id)
 	}
 
+	// Sort the IDs in ascending order
+	sort.Slice(contentIDs, func(i, j int) bool {
+		return contentIDs[i] < contentIDs[j]
+	})
+
+	// Create the final contents slice in sorted order
+	requestBody.Contents = make([]Content, 0, len(contentMap))
+	for _, id := range contentIDs {
+		requestBody.Contents = append(requestBody.Contents, contentMap[id])
+	}
 	// 转换完成后，返回 requestBody
 	return &requestBody, nil
 }

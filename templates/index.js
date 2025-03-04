@@ -103,19 +103,22 @@ async function sendMessage() {
     // Process images if files exist
     if (files) {
         for (let i = 0; i < files.length; i++) {
-            if (files[i].type.startsWith("image/")) {
-                const reader = new FileReader();
-                reader.readAsDataURL(files[i]);
-                await new Promise((resolve) => {
-                    reader.onload = function () {
-                        fileBase64s.push({
-                            mimeType: files[i].type,
-                            data: reader.result.split(',')[1] // Remove data URL prefix
-                        });
-                        resolve();
-                    };
-                });
-            }
+            const reader = new FileReader();
+            reader.readAsDataURL(files[i]);
+            await new Promise((resolve) => {
+                reader.onload = function () {
+                    // 从 Data URL 中提取 MIME 类型
+                    const result = reader.result;
+                    const match = result.match(/^data:([^;]+);/);
+                    const mimeType = match ? match[1] : files[i].type;
+                    console.log("Type: ", mimeType)
+                    fileBase64s.push({
+                        mime_type: mimeType,
+                        data: result.split(',')[1] // 去掉前缀部分
+                    });
+                    resolve();
+                };
+            });
         }
     }
 
@@ -140,14 +143,14 @@ async function sendMessage() {
     if (fileInput) {
         // Create permanent URLs for images before clearing input
         Array.from(fileInput.files).forEach(file => {
-            if (file.type.startsWith('image/')) {
-                const permanentUrl = URL.createObjectURL(file);
-                // Store the URL to be revoked later when no longer needed
-                if (!window.uploadedImageUrls) {
-                    window.uploadedImageUrls = [];
-                }
-                window.uploadedImageUrls.push(permanentUrl);
+            // if (file.type.startsWith('image/')) {
+            const permanentUrl = URL.createObjectURL(file);
+            // Store the URL to be revoked later when no longer needed
+            if (!window.uploadedImageUrls) {
+                window.uploadedImageUrls = [];
             }
+            window.uploadedImageUrls.push(permanentUrl);
+
         });
         fileInput.value = ""; // Clear the file input
     }
@@ -574,7 +577,7 @@ function adjustTextareaHeight() {
     textarea.style.overflowY = scrollHeight > maxHeight ? 'scroll' : 'hidden';
 }
 
-async function updateChatUI(id, historyData) {
+async function updateChatUI(id, historyData, title) {
     const chatContainer = document.getElementById("chat-container");
     chatContainer.style.display = "block"
     chatContainer.innerHTML = ""; // 清空现有内容
@@ -588,47 +591,130 @@ async function updateChatUI(id, historyData) {
         const messageElement = document.createElement("div");
         messageElement.className = `message ${content.role === "user" ? "user-message" : "ai-message"}`;
 
+        let flag = false;
         if (content.role === "user") {
             messageElement.style.whiteSpace = "pre-wrap"; // 保留换行和空格
             content.parts.forEach(part => {
-                if (part.text) {
+                if (part.text && !flag) {
                     const textDiv = document.createElement("div");
                     textDiv.textContent = part.text;
                     messageElement.appendChild(textDiv);
                     lastUserMessage = part.text;
+                    flag = true;
                 }
                 if (part.inline_data) {
-                    const imgContainer = document.createElement("div");
-                    imgContainer.className = "image-thumbnail-container";
+                    const container = document.createElement("div");
+                    container.className = "file-container";
 
-                    const img = document.createElement("img");
-                    img.src = `data:${part.inline_data.mime_type};base64,${part.inline_data.data}`;
-                    img.className = "image-thumbnail";
-                    img.style.maxWidth = "200px";
-                    img.style.maxHeight = "200px";
-                    img.style.cursor = "pointer";
+                    const mimeType = part.inline_data.mime_type;
 
-                    // 点击图片放大查看
-                    img.onclick = () => {
-                        const fullImg = window.open("", "_blank");
-                        fullImg.document.write(`
-                            <html>
-                                <head>
-                                    <title>Full Size Image</title>
-                                    <style>
-                                        body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; }
-                                        img { max-width: 100%; max-height: 100vh; object-fit: contain; }
-                                    </style>
-                                </head>
-                                <body>
-                                    <img src="${img.src}">
-                                </body>
-                            </html>
-                        `);
-                    };
+                    if (mimeType.startsWith('image/')) {
+                        // Handle images
+                        const imgContainer = document.createElement("div");
+                        imgContainer.className = "image-thumbnail-container";
 
-                    imgContainer.appendChild(img);
-                    messageElement.appendChild(imgContainer);
+                        const img = document.createElement("img");
+                        img.src = `data:${mimeType};base64,${part.inline_data.data}`;
+                        img.className = "image-thumbnail";
+                        img.style.maxWidth = "200px";
+                        img.style.maxHeight = "200px";
+                        img.style.cursor = "pointer";
+
+                        img.onclick = () => createMediaModal(img.src, 'image');
+                        imgContainer.appendChild(img);
+                        container.appendChild(imgContainer);
+                    } else if (mimeType.startsWith('video/')) {
+                        // Handle videos
+                        const video = document.createElement("video");
+                        video.src = `data:${mimeType};base64,${part.inline_data.data}`;
+                        video.controls = true;
+                        video.style.maxWidth = "300px";
+                        video.style.cursor = "pointer";
+                        video.onclick = () => createMediaModal(video.src, 'video');
+                        container.appendChild(video);
+                    } else if (mimeType.startsWith('audio/')) {
+                        // Handle audio
+                        const audio = document.createElement("audio");
+                        audio.src = `data:${mimeType};base64,${part.inline_data.data}`;
+                        audio.controls = true;
+                        container.appendChild(audio);
+                    } else if (mimeType.startsWith('text/') || mimeType === 'application/pdf') {
+                        // Handle text files and PDFs
+                        const linkContainer = document.createElement("div");
+                        linkContainer.style.display = "flex";
+                        linkContainer.style.alignItems = "center";
+                        linkContainer.style.backgroundColor = "var(--message-bg-color)";
+                        linkContainer.style.padding = "8px 12px";
+                        linkContainer.style.borderRadius = "6px";
+                        linkContainer.style.border = "1px solid var(--border-color)";
+
+                        const fileIcon = document.createElement("i");
+                        fileIcon.className = getFileIcon(mimeType);
+                        fileIcon.style.marginRight = "15px";
+                        fileIcon.style.fontSize = "18px";
+                        fileIcon.style.color = "var(--text-color)";
+
+                        const previewButton = document.createElement("button");
+                        previewButton.textContent = "预览";
+                        previewButton.style.padding = "6px 12px";
+                        previewButton.style.marginRight = "12px";
+                        previewButton.style.backgroundColor = "var(--ai-message-bg-color)";
+                        previewButton.style.color = "var(--text-color)";
+                        previewButton.style.border = "1px solid var(--border-color)";
+                        previewButton.style.borderRadius = "4px";
+                        previewButton.style.cursor = "pointer";
+                        previewButton.style.transition = "all 0.2s ease";
+                        previewButton.onclick = () => createDocumentModal(part.inline_data.data, mimeType);
+
+                        const downloadLink = document.createElement("a");
+                        downloadLink.href = `data:${mimeType};base64,${part.inline_data.data}`;
+                        downloadLink.download = "document";
+                        downloadLink.textContent = "下载";
+                        downloadLink.style.padding = "6px 12px";
+                        downloadLink.style.backgroundColor = "var(--ai-message-bg-color)";
+                        downloadLink.style.color = "var(--text-color)";
+                        downloadLink.style.border = "1px solid var(--border-color)";
+                        downloadLink.style.borderRadius = "4px";
+                        downloadLink.style.transition = "all 0.2s ease";
+
+                        // Add hover effects
+                        previewButton.onmouseover = () => {
+                            previewButton.style.backgroundColor = "var(--history-hover-bg-color)";
+                        };
+                        previewButton.onmouseout = () => {
+                            previewButton.style.backgroundColor = "var(--ai-message-bg-color)";
+                        };
+
+                        downloadLink.onmouseover = () => {
+                            downloadLink.style.backgroundColor = "rgba(0, 123, 255, 0.2)";
+                        };
+                        downloadLink.onmouseout = () => {
+                            downloadLink.style.backgroundColor = "rgba(0, 123, 255, 0.1)";
+                        };
+
+                        linkContainer.appendChild(fileIcon);
+                        linkContainer.appendChild(previewButton);
+                        linkContainer.appendChild(downloadLink);
+                        container.appendChild(linkContainer);
+                    } else {
+                        // Handle other files with download only
+                        const fileLink = document.createElement("a");
+                        fileLink.href = `data:${mimeType};base64,${part.inline_data.data}`;
+                        fileLink.download = "document";
+
+                        const fileIcon = document.createElement("i");
+                        fileIcon.className = getFileIcon(mimeType);
+                        fileIcon.style.marginRight = "10px";
+
+                        const fileName = document.createElement("span");
+                        fileName.textContent = getFileType(mimeType);
+
+                        fileLink.appendChild(fileIcon);
+                        fileLink.appendChild(fileName);
+                        container.appendChild(fileLink);
+                    }
+
+                    messageElement.appendChild(container);
                 }
             });
             conversationContainer.appendChild(messageElement);
@@ -690,11 +776,133 @@ async function updateChatUI(id, historyData) {
     });
 
     await checkAndDisableUIForRateLimit(id, document.getElementById("send-button"));
-    // 滚动条保持在底部
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+    if (title !== "") {
+        // 滚动条保持在底部
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
 
     // 启用代码块复制功能
     enableCodeCopy();
+}
+
+function createMediaModal(src, type) {
+    const modal = document.createElement("div");
+    modal.style.position = "fixed";
+    modal.style.top = "0";
+    modal.style.left = "0";
+    modal.style.width = "100%";
+    modal.style.height = "100%";
+    modal.style.backgroundColor = "rgba(0,0,0,0.9)";
+    modal.style.display = "flex";
+    modal.style.justifyContent = "center";
+    modal.style.alignItems = "center";
+    modal.style.zIndex = "1000";
+
+    const mediaElement = type === 'image'
+        ? document.createElement("img")
+        : document.createElement("video");
+
+    mediaElement.src = src;
+    mediaElement.style.maxWidth = "90%";
+    mediaElement.style.maxHeight = "90vh";
+    mediaElement.style.objectFit = "contain";
+
+    if (type === 'video') {
+        mediaElement.controls = true;
+    }
+
+    modal.appendChild(mediaElement);
+    document.body.appendChild(modal);
+
+    modal.onclick = (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    };
+}
+
+function getFileIcon(mimeType) {
+    switch (true) {
+        case mimeType.includes('pdf'):
+            return 'far fa-file-pdf';
+        case mimeType.includes('javascript'):
+            return 'far fa-file-code';
+        case mimeType.includes('python'):
+            return 'fab fa-python';
+        case mimeType.includes('text'):
+            return 'far fa-file-alt';
+        case mimeType.includes('html'):
+            return 'far fa-file-code';
+        case mimeType.includes('css'):
+            return 'far fa-file-code';
+        case mimeType.includes('csv'):
+            return 'far fa-file-excel';
+        case mimeType.includes('xml'):
+            return 'far fa-file-code';
+        default:
+            return 'far fa-file';
+    }
+}
+
+function getFileType(mimeType) {
+    return mimeType.split('/')[1].toUpperCase();
+}
+
+function createDocumentModal(base64Data, mimeType) {
+    const modal = document.createElement("div");
+    modal.style.position = "fixed";
+    modal.style.top = "0";
+    modal.style.left = "0";
+    modal.style.width = "100%";
+    modal.style.height = "100%";
+    modal.style.backgroundColor = "rgba(0,0,0,0.9)";
+    modal.style.display = "flex";
+    modal.style.justifyContent = "center";
+    modal.style.alignItems = "center";
+    modal.style.zIndex = "1000";
+
+    const isDarkTheme = localStorage.getItem('theme') === 'dark-theme';
+
+    if (mimeType === 'application/pdf') {
+        const iframe = document.createElement("iframe");
+        iframe.src = `data:${mimeType};base64,${base64Data}`;
+        iframe.style.width = "70%";
+        iframe.style.height = "70%";
+        iframe.style.border = "none";
+        modal.appendChild(iframe);
+    } else {
+        const textContainer = document.createElement("div");
+        textContainer.style.backgroundColor = isDarkTheme ? '#2d2d2d' : 'white';
+        textContainer.style.color = isDarkTheme ? '#e0e0e0' : 'black';
+        textContainer.style.padding = "20px";
+        textContainer.style.width = "60%";
+        textContainer.style.height = "60%";
+        textContainer.style.overflowY = "auto";
+        textContainer.style.whiteSpace = "pre-wrap";
+        textContainer.style.borderRadius = "8px";
+        textContainer.style.boxShadow = isDarkTheme ?
+            "0 4px 6px rgba(0, 0, 0, 0.5)" :
+            "0 4px 6px rgba(0, 0, 0, 0.1)";
+
+        // 正确解码UTF-8编码的base64文本
+        const binary = atob(base64Data);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
+        }
+        const decodedText = new TextDecoder('utf-8').decode(bytes);
+        textContainer.textContent = decodedText;
+
+        modal.appendChild(textContainer);
+    }
+
+    modal.onclick = (e) => {
+        if (e.target === modal) {
+            modal.remove();
+        }
+    };
+
+    document.body.appendChild(modal);
 }
 
 async function loadHistoryById(id, title) {
@@ -722,7 +930,7 @@ async function loadHistoryById(id, title) {
         }
 
         // 更新聊天界面
-        await updateChatUI(id, historyData);
+        await updateChatUI(id, historyData, title);
 
         // 存储当前对话的sessionId
         sessionStorage.setItem("sessionId", id);
