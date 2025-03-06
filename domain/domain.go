@@ -12,7 +12,7 @@ import (
 )
 
 type RequestBody struct {
-	Contents []Content `json:"contents"`
+	Contents []*Content `json:"contents"`
 }
 
 type Part struct {
@@ -26,8 +26,9 @@ type InlineData struct {
 }
 
 type Content struct {
-	Parts []Part `json:"parts"`
-	Role  string `json:"role"`
+	ContentID *int64  `json:"content_id,omitempty"`
+	Parts     []*Part `json:"parts,omitempty"`
+	Role      string  `json:"role"`
 }
 
 type GeminiResponse struct {
@@ -48,35 +49,32 @@ type GeminiResponse struct {
 func (r *RequestBody) prepareRequestBody(input configuration.UserInput) ([]byte, error) {
 	content := Content{
 		Role:  "user",
-		Parts: make([]Part, 0, len(input.Files)+1),
+		Parts: make([]*Part, 0),
 	}
 
 	// 处理所有图片数据
 	for _, fileBase64 := range input.Files {
-		content.Parts = append(content.Parts, Part{
-			InlineData: &InlineData{
-				MimeType: fileBase64.MimeType,
-				Data:     fileBase64.Data,
-			},
-		})
+		if fileBase64.Data != nil {
+			content.Parts = append(content.Parts, &Part{
+				InlineData: &InlineData{
+					MimeType: fileBase64.MimeType,
+					Data:     fileBase64.Data,
+				},
+			})
+		}
 	}
 
 	// 只有在有消息时才添加文本部分
 	if input.Message != "" {
-		textPart := Part{
+		content.Parts = append(content.Parts, &Part{
 			Text: input.Message,
-		}
-		content.Parts = append(content.Parts, textPart)
+		})
 	}
 
-	// 如果inlineData中的Data为nil，设置inlineData为空
-	for i := range content.Parts {
-		if content.Parts[i].InlineData != nil && content.Parts[i].InlineData.Data == nil {
-			content.Parts[i].InlineData = nil
-		}
+	// 只有在有内容时才添加到 Contents
+	if len(content.Parts) > 0 {
+		r.Contents = append(r.Contents, &content)
 	}
-
-	r.Contents = append(r.Contents, content)
 
 	body, err := json.Marshal(r)
 	if err != nil {

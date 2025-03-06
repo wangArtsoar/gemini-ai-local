@@ -15,7 +15,6 @@
 </head>
 <body>
 <script src="templates/index.js"></script>
-<script src="templates/file.js"></script>
 <header>
     <span id="conversation-title">{{.Title}}</span>
     <div id="model-selector" style="display: flex; align-items: center;">
@@ -48,9 +47,10 @@
             <!--            <textarea id="user-input" oninput="adjustTextareaHeight()" placeholder="Type your question..."-->
             <!--                      style="width: 696px; height: 5px;"></textarea>-->
             <input id="file-input" multiple onchange="handleFiles(this.files)" style="display: none;" type="file">
-            <textarea id="user-input" oninput="adjustTextareaHeight()"
-                      onpaste="handlePaste(event)"
-                      placeholder="Type your question or paste your file content here..." style="width: 696px; height: 5px;"></textarea>
+            <div id="fileInfo" style="display: none"></div>
+            <textarea id="user-input" oninput="adjustTextareaHeight()" onpaste="handlePaste(event)"
+                      placeholder="Type your question or paste your file content here..."
+                      style="width: 696px; height: 5px;"></textarea>
             <button id="send-button" onclick="sendMessage()">Send</button>
         </div>
     </div>

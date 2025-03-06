@@ -60,11 +60,11 @@ async function setSessionID() {
     }
 }
 
-let currentModel = "2.0"; // 默认模型
+let selectedModel = "gemini-2.0-flash"; // 默认模型
 
 function changeModel() {
     const modelSelect = document.getElementById("model-select");
-    const selectedModel = modelSelect.value;
+    selectedModel = modelSelect.value;
     console.log("Selected model:", selectedModel);
 
     fetch("/switchModel?model=" + encodeURIComponent(selectedModel), {
@@ -86,6 +86,66 @@ function changeModel() {
         });
 }
 
+function handlePaste(event) {
+    // Check if the paste event contains files
+    if (event.clipboardData.files.length > 0) {
+        event.preventDefault();
+        handleFiles(event.clipboardData.files);
+        const fileInput = document.getElementById("file-input");
+        fileInput.files = event.clipboardData.files;
+    }
+}
+
+function handleFiles(files) {
+    const chatContainer = document.getElementById("chat-container");
+    const uploadedInfoDiv = document.createElement("div");
+
+    chatContainer.style.display = "block";
+    uploadedInfoDiv.id = "uploaded-files-info";
+    uploadedInfoDiv.style.display = "block";
+
+    Array.from(files).forEach(file => {
+        const fileContainer = document.createElement("div");
+        fileContainer.className = "file-info-container";
+
+        if (file.type.startsWith("image/")) {
+            // Handle image files
+            const img = document.createElement("img");
+            img.src = URL.createObjectURL(file);
+            img.onload = () => URL.revokeObjectURL(img.src);
+            fileContainer.appendChild(img);
+        } else {
+            // Handle other file types
+            const fileInfo = document.createElement("p");
+            fileInfo.textContent = `${file.name} (${formatFileSize(file.size)})`;
+            fileContainer.appendChild(fileInfo);
+        }
+
+        // Add delete button
+        const deleteBtn = document.createElement("button");
+        deleteBtn.className = "file-delete-btn";
+        deleteBtn.innerHTML = "×";
+        deleteBtn.onclick = () => {
+            fileContainer.remove();
+            if (uploadedInfoDiv.children.length === 0) {
+                uploadedInfoDiv.style.display = "none";
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+        }
+        fileContainer.appendChild(deleteBtn);
+
+        uploadedInfoDiv.appendChild(fileContainer);
+    });
+
+    chatContainer.appendChild(uploadedInfoDiv);
+}
+
+function formatFileSize(bytes) {
+    if (bytes < 1024) return bytes + " B";
+    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+    else return (bytes / 1048576).toFixed(1) + " MB";
+}
+
 async function sendMessage() {
     const inputField = document.getElementById("user-input");
     const chatContainer = document.getElementById("chat-container");
@@ -95,6 +155,7 @@ async function sendMessage() {
 
     const userMessage = inputField.value.trim();
 
+    const content_id = parseInt(inputField.dataset.content_id);
     if (!userMessage) return;
 
     let files = fileInput?.files
@@ -102,6 +163,14 @@ async function sendMessage() {
 
     // Process images if files exist
     if (files) {
+        const totalSize = Array.from(files).reduce((sum, file) => sum + file.size, 0);
+        const maxSize = 200 * 1024 * 1024; // 20MB in bytes
+
+        if (totalSize > maxSize) {
+            alert("文件总大小不能超过200MB。");
+            return;
+        }
+
         for (let i = 0; i < files.length; i++) {
             const reader = new FileReader();
             reader.readAsDataURL(files[i]);
@@ -111,7 +180,19 @@ async function sendMessage() {
                     const result = reader.result;
                     const match = result.match(/^data:([^;]+);/);
                     const mimeType = match ? match[1] : files[i].type;
-                    console.log("Type: ", mimeType)
+                    const mediaTypes = ['image/', 'video/', 'audio/'];
+                    const isMediaFile = mediaTypes.some(type => mimeType.startsWith(type));
+                    const isSupportedFile = getFileIcon(mimeType) !== "far fa-file";
+                    // Check if video file is not supported for certain models
+                    if (mimeType.startsWith('video/') &&
+                        (selectedModel === 'gemini-2.0-pro' || selectedModel === 'gemini-2.0-flash-thinking-exp')) {
+                        alert("当前模型不支持视频文件输入。");
+                        return;
+                    }
+                    if (!isMediaFile && !isSupportedFile) {
+                        alert("不支持上传此类型文件。");
+                        return;
+                    }
                     fileBase64s.push({
                         mime_type: mimeType,
                         data: result.split(',')[1] // 去掉前缀部分
@@ -122,12 +203,10 @@ async function sendMessage() {
         }
     }
 
-    console.log(fileBase64s)
-
     disableInputAndButton(inputField, sendButton, "Stop");
 
     chatContainer.style.display = "block";
-    const conversationContainer = createConversationContainer(userMessage);
+    const conversationContainer = createConversationContainer(userMessage, fileBase64s);
     chatContainer.appendChild(conversationContainer);
 
     if (uploadedFilesInfo) {
@@ -140,26 +219,12 @@ async function sendMessage() {
 
     scrollToBottom(chatContainer);
     inputField.value = ""; // Clear the input field
-    if (fileInput) {
-        // Create permanent URLs for images before clearing input
-        Array.from(fileInput.files).forEach(file => {
-            // if (file.type.startsWith('image/')) {
-            const permanentUrl = URL.createObjectURL(file);
-            // Store the URL to be revoked later when no longer needed
-            if (!window.uploadedImageUrls) {
-                window.uploadedImageUrls = [];
-            }
-            window.uploadedImageUrls.push(permanentUrl);
-
-        });
-        fileInput.value = ""; // Clear the file input
-    }
 
     try {
         let sessionId = getSessionId();
         let flag = !sessionId;
 
-        const chatResponse = await fetchChatResponse(userMessage, sessionId, fileBase64s);
+        const chatResponse = await fetchChatResponse(userMessage, sessionId, content_id, fileBase64s);
         if (!chatResponse.ok) {
             if (chatResponse.status === 429) {
                 disableUIForRateLimit(inputField, sendButton);
@@ -182,8 +247,9 @@ async function sendMessage() {
     } catch (error) {
         handleError(conversationContainer, error);
     } finally {
+        fileInput.value = ""
         enableInputAndButton(inputField, sendButton, "Send");
-        await loadHistoryById(getSessionId(), "");
+        await loadHistoryById(getSessionId(), "")
     }
 }
 
@@ -225,9 +291,21 @@ function disableInputAndButton(inputField, sendButton, buttonText) {
     sendButton.disabled = true;
     sendButton.textContent = buttonText;
     sendButton.classList.add("stop");
+
+    // Add click handler for stop button
+    if (buttonText === "Stop") {
+        sendButton.onclick = () => {
+            if (sseReader) {
+                sseReader.cancel(); // Cancel the SSE connection
+                sseReader = null;
+            }
+            enableInputAndButton(inputField, sendButton, "Send");
+            sendButton.onclick = null; // Remove the stop handler
+        };
+    }
 }
 
-function createConversationContainer(userMessage) {
+function createConversationContainer(userMessage, fileBase64s = []) {
     const conversationContainer = document.createElement("div");
     conversationContainer.className = "conversation";
 
@@ -240,43 +318,15 @@ function createConversationContainer(userMessage) {
     textDiv.textContent = userMessage;
     userMessageElement.appendChild(textDiv);
 
-    // Handle images from file input
-    const fileInput = document.getElementById("file-input");
-    if (fileInput && fileInput.files.length > 0) {
-        Array.from(fileInput.files).forEach(file => {
-            if (file.type.startsWith("image/")) {
-                const imgContainer = document.createElement("div");
-                imgContainer.className = "image-thumbnail-container";
+    // Handle media files
+    if (fileBase64s.length > 0) {
+        fileBase64s.forEach(file => {
+            const container = document.createElement("div");
+            container.className = "file-container";
 
-                const img = document.createElement("img");
-                img.src = URL.createObjectURL(file);
-                img.className = "image-thumbnail";
-                img.style.maxWidth = "200px";
-                img.style.maxHeight = "200px";
-                img.style.cursor = "pointer";
+            fileUI(container, file, file.mime_type);
 
-                img.onclick = () => {
-                    const fullImg = window.open("", "_blank");
-                    fullImg.document.write(`
-                        <html>
-                            <head>
-                                <title>Full Size Image</title>
-                                <style>
-                                    body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #000; }
-                                    img { max-width: 100%; max-height: 100vh; object-fit: contain; }
-                                </style>
-                            </head>
-                            <body>
-                                <img src="${img.src}">
-                            </body>
-                        </html>
-                    `);
-                };
-
-                img.onload = () => URL.revokeObjectURL(img.src);
-                imgContainer.appendChild(img);
-                userMessageElement.appendChild(imgContainer);
-            }
+            userMessageElement.appendChild(container);
         });
     }
 
@@ -284,11 +334,11 @@ function createConversationContainer(userMessage) {
     return conversationContainer;
 }
 
-async function fetchChatResponse(userMessage, sessionId, fileBase64s) {
+async function fetchChatResponse(userMessage, sessionId, content_id, fileBase64s) {
     return fetch("/chat", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({message: userMessage, session_id: sessionId, files: fileBase64s}),
+        body: JSON.stringify({message: userMessage, session_id: sessionId, content_id: content_id, files: fileBase64s}),
     });
 }
 
@@ -518,9 +568,6 @@ function enableCodeCopy() {
     });
 }
 
-// 在回答完成后调用 enableCodeCopy
-enableCodeCopy();
-
 // 添加按钮
 function addButtons(aiMessageElement, aiMessageElementOnCopy, userMessage) {
     const buttonContainer = document.createElement("div");
@@ -550,7 +597,9 @@ function addButtons(aiMessageElement, aiMessageElementOnCopy, userMessage) {
     retryButton.className = "copy-btn";
     retryButton.style.backgroundColor = "#f0ad4e"; // 设置按钮颜色为橙色
     retryButton.onclick = () => {
+        const content_id = retryButton.closest('.conversation').parentElement.querySelector('.conversation').dataset.content_id;
         document.getElementById("user-input").value = userMessage;
+        document.getElementById("user-input").dataset.content_id = content_id;
         sendMessage();
     };
 
@@ -577,7 +626,7 @@ function adjustTextareaHeight() {
     textarea.style.overflowY = scrollHeight > maxHeight ? 'scroll' : 'hidden';
 }
 
-async function updateChatUI(id, historyData, title) {
+async function updateChatUI(id, historyData) {
     const chatContainer = document.getElementById("chat-container");
     chatContainer.style.display = "block"
     chatContainer.innerHTML = ""; // 清空现有内容
@@ -587,6 +636,7 @@ async function updateChatUI(id, historyData, title) {
     historyData.contents.forEach(content => {
         const conversationContainer = document.createElement("div");
         conversationContainer.className = "conversation";
+        conversationContainer.dataset.content_id = content.content_id; // Add content ID as data attribute
 
         const messageElement = document.createElement("div");
         messageElement.className = `message ${content.role === "user" ? "user-message" : "ai-message"}`;
@@ -608,111 +658,7 @@ async function updateChatUI(id, historyData, title) {
 
                     const mimeType = part.inline_data.mime_type;
 
-                    if (mimeType.startsWith('image/')) {
-                        // Handle images
-                        const imgContainer = document.createElement("div");
-                        imgContainer.className = "image-thumbnail-container";
-
-                        const img = document.createElement("img");
-                        img.src = `data:${mimeType};base64,${part.inline_data.data}`;
-                        img.className = "image-thumbnail";
-                        img.style.maxWidth = "200px";
-                        img.style.maxHeight = "200px";
-                        img.style.cursor = "pointer";
-
-                        img.onclick = () => createMediaModal(img.src, 'image');
-                        imgContainer.appendChild(img);
-                        container.appendChild(imgContainer);
-                    } else if (mimeType.startsWith('video/')) {
-                        // Handle videos
-                        const video = document.createElement("video");
-                        video.src = `data:${mimeType};base64,${part.inline_data.data}`;
-                        video.controls = true;
-                        video.style.maxWidth = "300px";
-                        video.style.cursor = "pointer";
-                        video.onclick = () => createMediaModal(video.src, 'video');
-                        container.appendChild(video);
-                    } else if (mimeType.startsWith('audio/')) {
-                        // Handle audio
-                        const audio = document.createElement("audio");
-                        audio.src = `data:${mimeType};base64,${part.inline_data.data}`;
-                        audio.controls = true;
-                        container.appendChild(audio);
-                    } else if (mimeType.startsWith('text/') || mimeType === 'application/pdf') {
-                        // Handle text files and PDFs
-                        const linkContainer = document.createElement("div");
-                        linkContainer.style.display = "flex";
-                        linkContainer.style.alignItems = "center";
-                        linkContainer.style.backgroundColor = "var(--message-bg-color)";
-                        linkContainer.style.padding = "8px 12px";
-                        linkContainer.style.borderRadius = "6px";
-                        linkContainer.style.border = "1px solid var(--border-color)";
-
-                        const fileIcon = document.createElement("i");
-                        fileIcon.className = getFileIcon(mimeType);
-                        fileIcon.style.marginRight = "15px";
-                        fileIcon.style.fontSize = "18px";
-                        fileIcon.style.color = "var(--text-color)";
-
-                        const previewButton = document.createElement("button");
-                        previewButton.textContent = "预览";
-                        previewButton.style.padding = "6px 12px";
-                        previewButton.style.marginRight = "12px";
-                        previewButton.style.backgroundColor = "var(--ai-message-bg-color)";
-                        previewButton.style.color = "var(--text-color)";
-                        previewButton.style.border = "1px solid var(--border-color)";
-                        previewButton.style.borderRadius = "4px";
-                        previewButton.style.cursor = "pointer";
-                        previewButton.style.transition = "all 0.2s ease";
-                        previewButton.onclick = () => createDocumentModal(part.inline_data.data, mimeType);
-
-                        const downloadLink = document.createElement("a");
-                        downloadLink.href = `data:${mimeType};base64,${part.inline_data.data}`;
-                        downloadLink.download = "document";
-                        downloadLink.textContent = "下载";
-                        downloadLink.style.padding = "6px 12px";
-                        downloadLink.style.backgroundColor = "var(--ai-message-bg-color)";
-                        downloadLink.style.color = "var(--text-color)";
-                        downloadLink.style.border = "1px solid var(--border-color)";
-                        downloadLink.style.borderRadius = "4px";
-                        downloadLink.style.transition = "all 0.2s ease";
-
-                        // Add hover effects
-                        previewButton.onmouseover = () => {
-                            previewButton.style.backgroundColor = "var(--history-hover-bg-color)";
-                        };
-                        previewButton.onmouseout = () => {
-                            previewButton.style.backgroundColor = "var(--ai-message-bg-color)";
-                        };
-
-                        downloadLink.onmouseover = () => {
-                            downloadLink.style.backgroundColor = "rgba(0, 123, 255, 0.2)";
-                        };
-                        downloadLink.onmouseout = () => {
-                            downloadLink.style.backgroundColor = "rgba(0, 123, 255, 0.1)";
-                        };
-
-                        linkContainer.appendChild(fileIcon);
-                        linkContainer.appendChild(previewButton);
-                        linkContainer.appendChild(downloadLink);
-                        container.appendChild(linkContainer);
-                    } else {
-                        // Handle other files with download only
-                        const fileLink = document.createElement("a");
-                        fileLink.href = `data:${mimeType};base64,${part.inline_data.data}`;
-                        fileLink.download = "document";
-
-                        const fileIcon = document.createElement("i");
-                        fileIcon.className = getFileIcon(mimeType);
-                        fileIcon.style.marginRight = "10px";
-
-                        const fileName = document.createElement("span");
-                        fileName.textContent = getFileType(mimeType);
-
-                        fileLink.appendChild(fileIcon);
-                        fileLink.appendChild(fileName);
-                        container.appendChild(fileLink);
-                    }
+                    fileUI(container, part.inline_data, mimeType);
 
                     messageElement.appendChild(container);
                 }
@@ -776,13 +722,120 @@ async function updateChatUI(id, historyData, title) {
     });
 
     await checkAndDisableUIForRateLimit(id, document.getElementById("send-button"));
-    if (title !== "") {
-        // 滚动条保持在底部
-        chatContainer.scrollTop = chatContainer.scrollHeight;
-    }
+
+    // 滚动条保持在底部
+    chatContainer.scrollTop = chatContainer.scrollHeight;
 
     // 启用代码块复制功能
     enableCodeCopy();
+}
+
+function fileUI(container, part, mimeType) {
+    if (mimeType.startsWith('image/')) {
+        // Handle images
+        const imgContainer = document.createElement("div");
+        imgContainer.className = "image-thumbnail-container";
+
+        const img = document.createElement("img");
+        img.src = `data:${mimeType};base64,${part.data}`;
+        img.className = "image-thumbnail";
+        img.style.maxWidth = "200px";
+        img.style.maxHeight = "200px";
+        img.style.cursor = "pointer";
+
+        img.onclick = () => createMediaModal(img.src, 'image');
+        imgContainer.appendChild(img);
+        container.appendChild(imgContainer);
+    } else if (mimeType.startsWith('video/')) {
+        // Handle videos
+        const video = document.createElement("video");
+        video.src = `data:${mimeType};base64,${part.data}`;
+        video.controls = true;
+        video.style.maxWidth = "300px";
+        video.style.cursor = "pointer";
+        video.onclick = () => createMediaModal(video.src, 'video');
+        container.appendChild(video);
+    } else if (mimeType.startsWith('audio/')) {
+        // Handle audio
+        const audio = document.createElement("audio");
+        audio.src = `data:${mimeType};base64,${part.data}`;
+        audio.controls = true;
+        container.appendChild(audio);
+    } else if (mimeType.startsWith('text/') || mimeType === 'application/pdf') {
+        // Handle text files and PDFs
+        const linkContainer = document.createElement("div");
+        linkContainer.style.display = "flex";
+        linkContainer.style.alignItems = "center";
+        linkContainer.style.backgroundColor = "var(--message-bg-color)";
+        linkContainer.style.padding = "8px 12px";
+        linkContainer.style.borderRadius = "6px";
+        linkContainer.style.border = "1px solid var(--border-color)";
+
+        const fileIcon = document.createElement("i");
+        fileIcon.className = getFileIcon(mimeType);
+        fileIcon.style.marginRight = "15px";
+        fileIcon.style.fontSize = "18px";
+        fileIcon.style.color = "var(--text-color)";
+
+        const previewButton = document.createElement("button");
+        previewButton.textContent = "预览";
+        previewButton.style.padding = "6px 12px";
+        previewButton.style.marginRight = "12px";
+        previewButton.style.backgroundColor = "var(--ai-message-bg-color)";
+        previewButton.style.color = "var(--text-color)";
+        previewButton.style.border = "1px solid var(--border-color)";
+        previewButton.style.borderRadius = "4px";
+        previewButton.style.cursor = "pointer";
+        previewButton.style.transition = "all 0.2s ease";
+        previewButton.onclick = () => createDocumentModal(part.data, mimeType);
+
+        const downloadLink = document.createElement("a");
+        downloadLink.href = `data:${mimeType};base64,${part.data}`;
+        downloadLink.download = "document";
+        downloadLink.textContent = "下载";
+        downloadLink.style.padding = "6px 12px";
+        downloadLink.style.backgroundColor = "var(--ai-message-bg-color)";
+        downloadLink.style.color = "var(--text-color)";
+        downloadLink.style.border = "1px solid var(--border-color)";
+        downloadLink.style.borderRadius = "4px";
+        downloadLink.style.transition = "all 0.2s ease";
+
+        // Add hover effects
+        previewButton.onmouseover = () => {
+            previewButton.style.backgroundColor = "var(--history-hover-bg-color)";
+        };
+        previewButton.onmouseout = () => {
+            previewButton.style.backgroundColor = "var(--ai-message-bg-color)";
+        };
+
+        downloadLink.onmouseover = () => {
+            downloadLink.style.backgroundColor = "rgba(0, 123, 255, 0.2)";
+        };
+        downloadLink.onmouseout = () => {
+            downloadLink.style.backgroundColor = "rgba(0, 123, 255, 0.1)";
+        };
+
+        linkContainer.appendChild(fileIcon);
+        linkContainer.appendChild(previewButton);
+        linkContainer.appendChild(downloadLink);
+        container.appendChild(linkContainer);
+    } else {
+        // Handle other files with download only
+        const fileLink = document.createElement("a");
+        fileLink.href = `data:${mimeType};base64,${part.data}`;
+        fileLink.download = "document";
+
+        const fileIcon = document.createElement("i");
+        fileIcon.className = getFileIcon(mimeType);
+        fileIcon.style.marginRight = "10px";
+
+        const fileName = document.createElement("span");
+        fileName.textContent = getFileType(mimeType);
+
+        fileLink.appendChild(fileIcon);
+        fileLink.appendChild(fileName);
+        container.appendChild(fileLink);
+    }
 }
 
 function createMediaModal(src, type) {
@@ -918,7 +971,6 @@ async function loadHistoryById(id, title) {
             title = String(title);
             title = title.replace(/\n/g, "");
 
-            console.log(Array.from(title).length);
             // 补充标题至40个字符
             while (Array.from(title).length < 40) {
                 title += ' ';
@@ -930,7 +982,7 @@ async function loadHistoryById(id, title) {
         }
 
         // 更新聊天界面
-        await updateChatUI(id, historyData, title);
+        await updateChatUI(id, historyData);
 
         // 存储当前对话的sessionId
         sessionStorage.setItem("sessionId", id);
@@ -965,7 +1017,6 @@ async function checkAndDisableUIForRateLimit(inputField, sendButton) {
         console.error("Error checking session limit status:", error);
     }
 }
-
 
 function highlightActiveHistory(id) {
     // 获取历史记录列表
@@ -1040,7 +1091,6 @@ function updateHistoryList(historyData) {
 
             // 显示标题或“无消息”，并固定长度为40个字符
             const titleSpan = document.createElement("span");
-            console.log(item.title)
             while (Array.from(item.title.replace(/\n/g, "")).length < 40) {
                 item.title += ' ';
             }
@@ -1127,14 +1177,14 @@ function getSessionId() {
 
 function startNewConversation() {
     // 重置本地会话 ID
-    sessionStorage.removeItem('sessionId'); // 或生成一个新的唯一 ID并设置
+    sessionStorage.removeItem('sessionId');
     sessionStorage.setItem('sessionId', "");
 
     // 清空聊天区域内容
     const chatContainer = document.getElementById("chat-container");
     chatContainer.innerHTML = "";
     document.getElementById("conversation-title").textContent = "AI Chat";
-    sessionStorage.setItem("sessionId", "")
+
     // Remove active class from history item (if any)
     const historyList = document.getElementById("history-list");
     if (historyList) {
@@ -1143,8 +1193,18 @@ function startNewConversation() {
             item.classList.remove("active");
         }
     }
+
+    // 隐藏聊天容器
     chatContainer.style.display = "none";
-    enableUIForRateLimit(document.getElementById("user-input"), document.getElementById("send-button"));
+
+    // 确保输入框和发送按钮可用
+    const inputField = document.getElementById("user-input");
+    const sendButton = document.getElementById("send-button");
+    inputField.disabled = false;
+    inputField.style.backgroundColor = '';
+    sendButton.disabled = false;
+    sendButton.textContent = "Send";
+
     console.log("Conversation reset successfully.");
 }
 
@@ -1157,7 +1217,6 @@ window.onload = async () => {
             return;
         }
         const historyData = await historyResponse.json();
-        console.log("historyData : ", historyData)
         updateHistoryList(historyData);
     } catch (error) {
         console.error("Error loading history on page load:", error);
@@ -1172,7 +1231,6 @@ async function historyList() {
             return;
         }
         const historyData = await historyResponse.json();
-        console.log("historyData : ", historyData)
         updateHistoryList(historyData);
     } catch (error) {
         console.error("Error loading history on page load:", error);

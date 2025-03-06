@@ -191,16 +191,23 @@ func Chat(input configuration.UserInput, db *sql.DB, w http.ResponseWriter) erro
 		var sessionLastId = int64(input.SessionID)
 
 		if session != nil {
-			history, err := FindHistoryBySessionID(db, int64(input.SessionID))
+			if input.ContentID != nil {
+				// 查询 content ID 比 ContentID 大的记录并删除
+				if err = delHistoryInContentIDBySessionID(db, int64(input.SessionID), int64(*input.ContentID)); err != nil {
+					return fmt.Errorf("failed to delete history: %w", err)
+				}
+			}
+			history, err := FindHistoryBySessionID(db, int64(input.SessionID), false)
 			if err != nil {
 				return fmt.Errorf("failed to get history: %w", err)
 			}
-			requestBody = *history
-		} else {
-			sessionLastId, err = saveSession(ctx, tx)
-			if err != nil {
-				return err
+			if history != nil {
+				requestBody = *history
 			}
+		}
+		sessionLastId, err = saveSession(ctx, tx, session)
+		if err != nil {
+			return err
 		}
 
 		body, err := requestBody.prepareRequestBody(input)
@@ -208,7 +215,7 @@ func Chat(input configuration.UserInput, db *sql.DB, w http.ResponseWriter) erro
 			return err
 		}
 
-		if err := saveHistory(ctx, tx, sessionLastId, "user", input); err != nil {
+		if err = saveHistory(ctx, tx, sessionLastId, "user", input); err != nil {
 			log.Printf("保存用户历史记录失败: %v", err)
 			return err
 		}
@@ -242,6 +249,26 @@ func Chat(input configuration.UserInput, db *sql.DB, w http.ResponseWriter) erro
 	return err
 }
 
+func delHistoryInContentIDBySessionID(db *sql.DB, sessionID int64, contentID int64) error {
+	// First delete from part table
+	sqlDeletePart := `DELETE FROM part WHERE content_id IN (
+        SELECT c.id
+        FROM content c
+        WHERE c.session_id = ? AND c.id >= ?
+    )`
+	if _, err := db.Exec(sqlDeletePart, sessionID, contentID); err != nil {
+		return fmt.Errorf("failed to delete parts: %w", err)
+	}
+
+	// Then delete from content table
+	sqlDeleteContent := `DELETE FROM content WHERE session_id = ? AND id >= ?`
+	if _, err := db.Exec(sqlDeleteContent, sessionID, contentID); err != nil {
+		return fmt.Errorf("failed to delete content: %w", err)
+	}
+
+	return nil
+}
+
 func retryTransaction(db *sql.DB, ctx context.Context, txFunc func(tx *sql.Tx) error) error {
 	var err error
 	for i := 0; i < maxRetries; i++ {
@@ -270,22 +297,31 @@ func retryTransaction(db *sql.DB, ctx context.Context, txFunc func(tx *sql.Tx) e
 	return fmt.Errorf("failed to complete transaction after %d retries: %w", maxRetries, err)
 }
 
-func saveSession(ctx context.Context, tx *sql.Tx) (int64, error) {
+func saveSession(ctx context.Context, tx *sql.Tx, session *persistence.Session) (int64, error) {
 	sessionBase, err := new(gemini_util.Util).Encrypt()
 	if err != nil {
 		return 0, err
 	}
-	sessionResult, err := tx.ExecContext(ctx, `INSERT INTO session(title,session_base, create_at) VALUES (?,?,?)`,
-		"", sessionBase, time.Now())
-	if err != nil {
-		return 0, err
-	}
 
-	insertId, err := sessionResult.LastInsertId()
-	if err != nil {
-		return 0, err
+	if session != nil {
+		_, err = tx.ExecContext(ctx, `UPDATE session SET session_base=?, create_at=? WHERE id= ?`,
+			sessionBase, time.Now(), session.ID)
+		if err != nil {
+			return 0, err
+		}
+		return session.ID, nil
+	} else {
+		sessionResult, err := tx.ExecContext(ctx, `INSERT INTO session(title,session_base, create_at) VALUES (?,?,?)`,
+			"", sessionBase, time.Now())
+		if err != nil {
+			return 0, err
+		}
+		insertId, err := sessionResult.LastInsertId()
+		if err != nil {
+			return 0, err
+		}
+		return insertId, nil
 	}
-	return insertId, nil
 }
 
 func PostRequestOnClient(input configuration.UserInput) (*http.Response, error) {
@@ -373,7 +409,7 @@ func saveHistory(ctx context.Context, tx *sql.Tx, sessionID int64, role string, 
 	return nil
 }
 
-func FindHistoryBySessionID(db *sql.DB, sessionID int64) (*RequestBody, error) {
+func FindHistoryBySessionID(db *sql.DB, sessionID int64, isNeedContentID bool) (*RequestBody, error) {
 	sqlHistory := `
 	SELECT s.id, c.id, c.role, p.id,p.text, id.data, id.media_type
 	FROM session s 
@@ -393,10 +429,10 @@ func FindHistoryBySessionID(db *sql.DB, sessionID int64) (*RequestBody, error) {
 
 	type result struct {
 		SessionID  int64
-		ContentID  int64
-		Role       string
-		PartID     int64
-		Text       string
+		ContentID  sql.NullInt64
+		Role       sql.NullString
+		PartID     sql.NullInt64
+		Text       sql.NullString
 		InlineData []byte
 		MediaType  sql.NullString
 	}
@@ -416,36 +452,50 @@ func FindHistoryBySessionID(db *sql.DB, sessionID int64) (*RequestBody, error) {
 		return nil, err
 	}
 
+	if len(results) == 0 {
+		return nil, nil
+	}
+
 	var requestBody RequestBody
-	contentMap := make(map[int64]Content)
-	partMap := make(map[int64]Part)
+	contentMap := make(map[int64]*Content)
+	partMap := make(map[int64]*Part)
 	for _, res := range results {
 		// 检查 Content 是否已存在
-		content, ok := contentMap[res.ContentID]
+		if !res.ContentID.Valid {
+			continue
+		}
+		content, ok := contentMap[res.ContentID.Int64]
 		if !ok {
 			// 如果不存在，则创建新的 Content
-			content = Content{
-				Parts: []Part{}, // 初始化为空的 Parts
-				Role:  res.Role, // Role 只需要设置一次
+			if isNeedContentID {
+				content = &Content{
+					ContentID: &res.ContentID.Int64,
+					Role:      res.Role.String, // Role 只需要设置一次
+				}
+			} else {
+				content = &Content{
+					Role: res.Role.String, // Role 只需要设置一次
+				}
 			}
-			contentMap[res.ContentID] = content
+
+			contentMap[res.ContentID.Int64] = content
 		}
-		part1, ok := partMap[res.PartID]
+		part1, ok := partMap[res.PartID.Int64]
 		if !ok {
-			part1 = Part{Text: res.Text}
+			part1 = &Part{Text: res.Text.String}
 			content.Parts = append(content.Parts, part1)
 		}
 		if res.InlineData != nil {
-			part2 := Part{}
+			part2 := &Part{}
 			part2.InlineData = &InlineData{
 				Data:     res.InlineData,
 				MimeType: res.MediaType.String,
 			}
-			content.Parts = append([]Part{part2}, content.Parts...)
+			content.Parts = append([]*Part{part2}, content.Parts...)
 		}
 
 		// Update the content in the map
-		contentMap[res.ContentID] = content
+		contentMap[res.ContentID.Int64] = content
 	}
 	// Convert map to slice
 	// Create a slice of content IDs for sorting
@@ -460,7 +510,7 @@ func FindHistoryBySessionID(db *sql.DB, sessionID int64) (*RequestBody, error) {
 	})
 
 	// Create the final contents slice in sorted order
-	requestBody.Contents = make([]Content, 0, len(contentMap))
+	requestBody.Contents = make([]*Content, 0, len(contentMap))
 	for _, id := range contentIDs {
 		requestBody.Contents = append(requestBody.Contents, contentMap[id])
 	}

@@ -2,6 +2,7 @@ package router
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/wangArtsoar/gemini-ai/configuration"
 	"github.com/wangArtsoar/gemini-ai/domain"
 	"html/template"
@@ -162,7 +163,7 @@ func handleFindHistory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to parse request", http.StatusBadRequest)
 		return
 	}
-	body, err := domain.FindHistoryBySessionID(configuration.DB, int64(id))
+	body, err := domain.FindHistoryBySessionID(configuration.DB, int64(id), true)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "Server error: "+err.Error(), http.StatusInternalServerError)
@@ -212,6 +213,14 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for _, inlineDataDto := range userInput.Files {
+		if _, ok := configuration.CustomMIMEs[inlineDataDto.MimeType]; !ok {
+			err := fmt.Errorf("Custom MIME type not recognized: %v\n", inlineDataDto.MimeType)
+			log.Println(err)
+			http.Error(w, "Server error: "+err.Error(), configuration.HttpState)
+			return
+		}
+	}
 	if err := domain.Chat(userInput, configuration.DB, w); err != nil {
 		log.Println(err)
 		http.Error(w, "Server error: "+err.Error(), configuration.HttpState)

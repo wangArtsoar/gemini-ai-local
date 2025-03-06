@@ -21,10 +21,45 @@ var (
 	HttpState       = 200
 )
 
+var CustomMIMEs = map[string]string{
+	".pdf":  "application/pdf",
+	".js":   "application/x-javascript",
+	".py":   "application/x-python",
+	".txt":  "text/plain",
+	".html": "text/html",
+	".css":  "text/css",
+	".md":   "text/md",
+	".csv":  "text/csv",
+	".xml":  "text/xml",
+	".rtf":  "text/rtf",
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".webp": "image/webp",
+	".heic": "image/heic",
+	".heif": "image/heif",
+	".mp4":  "video/mp4",
+	".mpeg": "video/mpeg",
+	".mov":  "video/mov",
+	".avi":  "video/avi",
+	".flv":  "video/x-flv",
+	".mpg":  "video/mpg",
+	".webm": "video/webm",
+	".wmv":  "video/wmv",
+	".3gp":  "video/3gpp",
+	".wav":  "audio/wav",
+	".mp3":  "audio/mp3",
+	".aiff": "audio/aiff",
+	".aac":  "audio/aac",
+	".ogg":  "audio/ogg",
+	".flac": "audio/flac",
+}
+
 type UserInput struct {
 	Message   string          `json:"message,omitempty"`
 	SessionID int             `json:"session_id"`
 	Files     []InlineDataDto `json:"files,omitempty"`
+	ContentID *int            `json:"content_id,omitempty"`
 }
 
 type InlineDataDto struct {
