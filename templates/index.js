@@ -146,10 +146,9 @@ function formatFileSize(bytes) {
     else return (bytes / 1048576).toFixed(1) + " MB";
 }
 
-async function sendMessage() {
+async function sendMessage(isReply) {
     const inputField = document.getElementById("user-input");
     const chatContainer = document.getElementById("chat-container");
-    const sendButton = document.getElementById("send-button");
     const fileInput = document.getElementById("file-input");
     const uploadedFilesInfo = document.getElementById("uploaded-files-info");
 
@@ -157,7 +156,7 @@ async function sendMessage() {
 
     const content_id = parseInt(inputField.dataset.content_id);
     if (!userMessage) return;
-
+    adjustTextareaHeight()
     let files = fileInput?.files
     let fileBase64s = [];  // Store image objects
 
@@ -203,8 +202,6 @@ async function sendMessage() {
         }
     }
 
-    disableInputAndButton(inputField, sendButton, "Stop");
-
     chatContainer.style.display = "block";
     const conversationContainer = createConversationContainer(userMessage, fileBase64s);
     chatContainer.appendChild(conversationContainer);
@@ -224,10 +221,10 @@ async function sendMessage() {
         let sessionId = getSessionId();
         let flag = !sessionId;
 
-        const chatResponse = await fetchChatResponse(userMessage, sessionId, content_id, fileBase64s);
+        const chatResponse = await fetchChatResponse(userMessage, sessionId, content_id, fileBase64s, isReply);
         if (!chatResponse.ok) {
             if (chatResponse.status === 429) {
-                disableUIForRateLimit(inputField, sendButton);
+                disableUIForRateLimit(inputField);
                 lockSession()
                 throw new Error('已达到限制。');
             }
@@ -248,12 +245,11 @@ async function sendMessage() {
         handleError(conversationContainer, error);
     } finally {
         fileInput.value = ""
-        enableInputAndButton(inputField, sendButton, "Send");
         await loadHistoryById(getSessionId(), "")
     }
 }
 
-function disableUIForRateLimit(inputField, sendButton) {
+function disableUIForRateLimit(inputField) {
     // 禁用所有重新回答按钮
     document.querySelectorAll('.copy-btn').forEach(btn => {
         if (btn.textContent === '重新回答') {
@@ -265,10 +261,9 @@ function disableUIForRateLimit(inputField, sendButton) {
     // 禁用输入框
     inputField.disabled = true;
     inputField.style.backgroundColor = '#f5f5f5';
-    sendButton.disabled = true;
 }
 
-function enableUIForRateLimit(inputField, sendButton) {
+function enableUIForRateLimit(inputField) {
     // 启用所有重新回答按钮
     document.querySelectorAll('.copy-btn')
         .forEach(btn => {
@@ -281,28 +276,6 @@ function enableUIForRateLimit(inputField, sendButton) {
     // 启用输入框
     inputField.disabled = false;
     inputField.style.backgroundColor = '';
-    sendButton.disabled = false;
-}
-
-function disableInputAndButton(inputField, sendButton, buttonText) {
-    inputField.style.height = "5px";
-    inputField.style.overflowY = "hidden";
-    inputField.disabled = true;
-    sendButton.disabled = true;
-    sendButton.textContent = buttonText;
-    sendButton.classList.add("stop");
-
-    // Add click handler for stop button
-    if (buttonText === "Stop") {
-        sendButton.onclick = () => {
-            if (sseReader) {
-                sseReader.cancel(); // Cancel the SSE connection
-                sseReader = null;
-            }
-            enableInputAndButton(inputField, sendButton, "Send");
-            sendButton.onclick = null; // Remove the stop handler
-        };
-    }
 }
 
 function createConversationContainer(userMessage, fileBase64s = []) {
@@ -334,11 +307,17 @@ function createConversationContainer(userMessage, fileBase64s = []) {
     return conversationContainer;
 }
 
-async function fetchChatResponse(userMessage, sessionId, content_id, fileBase64s) {
+async function fetchChatResponse(userMessage, sessionId, content_id, fileBase64s, isReply) {
     return fetch("/chat", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({message: userMessage, session_id: sessionId, content_id: content_id, files: fileBase64s}),
+        body: JSON.stringify({
+            message: userMessage,
+            session_id: sessionId,
+            content_id: content_id,
+            files: fileBase64s,
+            is_reply: isReply
+        }),
     });
 }
 
@@ -506,22 +485,15 @@ function handleError(conversationContainer, error, userMessage) {
         retryButton.style.border = "none";
         retryButton.style.borderRadius = "3px";
         retryButton.style.cursor = "pointer";
-        retryButton.onclick = () => {
+        retryButton.onclick = async () => {
             conversationContainer.remove();
             document.getElementById("user-input").value = userMessage;
-            sendMessage();
+            await sendMessage(false);
         };
         errorContainer.appendChild(retryButton);
     }
 
     conversationContainer.appendChild(errorContainer);
-}
-
-function enableInputAndButton(inputField, sendButton, buttonText) {
-    sendButton.textContent = buttonText;
-    sendButton.classList.remove("stop");
-    sendButton.disabled = false;
-    inputField.disabled = false;
 }
 
 function scrollToBottom(chatContainer) {
@@ -591,21 +563,63 @@ function addButtons(aiMessageElement, aiMessageElementOnCopy, userMessage) {
             });
     };
 
-    // 重新回答按钮
     const retryButton = document.createElement("button");
     retryButton.textContent = "重新回答";
     retryButton.className = "copy-btn";
     retryButton.style.backgroundColor = "#f0ad4e"; // 设置按钮颜色为橙色
-    retryButton.onclick = () => {
-        const content_id = retryButton.closest('.conversation').parentElement.querySelector('.conversation').dataset.content_id;
-        document.getElementById("user-input").value = userMessage;
-        document.getElementById("user-input").dataset.content_id = content_id;
-        sendMessage();
+    retryButton.onclick = async () => {
+        const conversation = retryButton.closest('.conversation').parentElement.querySelector('.conversation');
+        const content_id = conversation.dataset.content_id;
+        const userInput = document.getElementById("user-input");
+        const fileInput = document.getElementById("file-input");
+
+        userInput.value = userMessage;
+        userInput.dataset.content_id = content_id;
+
+        // Get all files from the previous user message
+        const fileContainers = conversation.querySelector(".user-message").querySelectorAll('.file-container');
+        if (fileContainers && fileContainers.length > 0) {
+            const dataTransfer = new DataTransfer();
+            fileContainers.forEach(container => {
+                // Check for media elements first
+                const mediaElement = container.querySelector('img, video, audio');
+                if (mediaElement) {
+                    const base64Data = mediaElement.src.split(',')[1];
+                    const mimeType = mediaElement.src.match(/^data:(.*?);/)[1];
+                    const blob = base64ToBlob(base64Data, mimeType);
+                    const file = new File([blob], `file.${mimeType.split('/')[1]}`, {type: mimeType});
+                    dataTransfer.items.add(file);
+                } else {
+                    // Handle other file types (text, pdf, etc.)
+                    const fileLink = container.querySelector('a');
+                    if (fileLink) {
+                        const mimeType = fileLink.href.split(';')[0].split(':')[1];
+                        const base64Data = fileLink.href.split(',')[1];
+                        const blob = base64ToBlob(base64Data, mimeType);
+                        const file = new File([blob], `file.${getFileType(mimeType).toLowerCase()}`, {type: mimeType});
+                        dataTransfer.items.add(file);
+                    }
+                }
+            });
+            fileInput.files = dataTransfer.files;
+        }
+
+        await sendMessage(true);
     };
 
     buttonContainer.appendChild(copyButton);
     buttonContainer.appendChild(retryButton);
     aiMessageElement.parentElement.appendChild(buttonContainer);
+}
+
+function base64ToBlob(base64, mimeType) {
+    const byteString = atob(base64);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+    }
+    return new Blob([ab], {type: mimeType});
 }
 
 document.addEventListener('keydown', function (event) {
@@ -721,7 +735,7 @@ async function updateChatUI(id, historyData) {
         chatContainer.appendChild(conversationContainer);
     });
 
-    await checkAndDisableUIForRateLimit(id, document.getElementById("send-button"));
+    await checkAndDisableUIForRateLimit(id);
 
     // 滚动条保持在底部
     chatContainer.scrollTop = chatContainer.scrollHeight;
@@ -995,7 +1009,7 @@ async function loadHistoryById(id, title) {
     }
 }
 
-async function checkAndDisableUIForRateLimit(inputField, sendButton) {
+async function checkAndDisableUIForRateLimit(inputField) {
     try {
         const sessionId = getSessionId();
         if (!sessionId) return;
@@ -1011,7 +1025,7 @@ async function checkAndDisableUIForRateLimit(inputField, sendButton) {
 
         const isLimited = await response.json();
         if (isLimited) {
-            disableUIForRateLimit(inputField, sendButton);
+            disableUIForRateLimit(inputField);
         }
     } catch (error) {
         console.error("Error checking session limit status:", error);
@@ -1177,14 +1191,13 @@ function getSessionId() {
 
 function startNewConversation() {
     // 重置本地会话 ID
-    sessionStorage.removeItem('sessionId');
+    sessionStorage.removeItem('sessionId'); // 或生成一个新的唯一 ID并设置
     sessionStorage.setItem('sessionId', "");
 
     // 清空聊天区域内容
     const chatContainer = document.getElementById("chat-container");
     chatContainer.innerHTML = "";
     document.getElementById("conversation-title").textContent = "AI Chat";
-
     // Remove active class from history item (if any)
     const historyList = document.getElementById("history-list");
     if (historyList) {
@@ -1193,18 +1206,8 @@ function startNewConversation() {
             item.classList.remove("active");
         }
     }
-
-    // 隐藏聊天容器
     chatContainer.style.display = "none";
-
-    // 确保输入框和发送按钮可用
-    const inputField = document.getElementById("user-input");
-    const sendButton = document.getElementById("send-button");
-    inputField.disabled = false;
-    inputField.style.backgroundColor = '';
-    sendButton.disabled = false;
-    sendButton.textContent = "Send";
-
+    enableUIForRateLimit(document.getElementById("user-input"));
     console.log("Conversation reset successfully.");
 }
 

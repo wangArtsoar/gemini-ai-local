@@ -21,38 +21,37 @@ var (
 	HttpState       = 200
 )
 
-var CustomMIMEs = map[string]string{
-	".pdf":  "application/pdf",
-	".js":   "application/x-javascript",
-	".py":   "application/x-python",
-	".txt":  "text/plain",
-	".html": "text/html",
-	".css":  "text/css",
-	".md":   "text/md",
-	".csv":  "text/csv",
-	".xml":  "text/xml",
-	".rtf":  "text/rtf",
-	".png":  "image/png",
-	".jpg":  "image/jpeg",
-	".jpeg": "image/jpeg",
-	".webp": "image/webp",
-	".heic": "image/heic",
-	".heif": "image/heif",
-	".mp4":  "video/mp4",
-	".mpeg": "video/mpeg",
-	".mov":  "video/mov",
-	".avi":  "video/avi",
-	".flv":  "video/x-flv",
-	".mpg":  "video/mpg",
-	".webm": "video/webm",
-	".wmv":  "video/wmv",
-	".3gp":  "video/3gpp",
-	".wav":  "audio/wav",
-	".mp3":  "audio/mp3",
-	".aiff": "audio/aiff",
-	".aac":  "audio/aac",
-	".ogg":  "audio/ogg",
-	".flac": "audio/flac",
+var CustomMIMEs = map[string]struct{}{
+	"application/pdf":          {},
+	"application/x-javascript": {},
+	"application/x-python":     {},
+	"text/plain":               {},
+	"text/html":                {},
+	"text/css":                 {},
+	"text/md":                  {},
+	"text/csv":                 {},
+	"text/xml":                 {},
+	"text/rtf":                 {},
+	"image/png":                {},
+	"image/jpeg":               {},
+	"image/webp":               {},
+	"image/heic":               {},
+	"image/heif":               {},
+	"video/mp4":                {},
+	"video/mpeg":               {},
+	"video/mov":                {},
+	"video/avi":                {},
+	"video/x-flv":              {},
+	"video/mpg":                {},
+	"video/webm":               {},
+	"video/wmv":                {},
+	"video/3gpp":               {},
+	"audio/wav":                {},
+	"audio/mp3":                {},
+	"audio/aiff":               {},
+	"audio/aac":                {},
+	"audio/ogg":                {},
+	"audio/flac":               {},
 }
 
 type UserInput struct {
@@ -60,6 +59,7 @@ type UserInput struct {
 	SessionID int             `json:"session_id"`
 	Files     []InlineDataDto `json:"files,omitempty"`
 	ContentID *int            `json:"content_id,omitempty"`
+	IsReply   bool            `json:"is_reply,omitempty"`
 }
 
 type InlineDataDto struct {

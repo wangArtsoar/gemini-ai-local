@@ -191,7 +191,7 @@ func Chat(input configuration.UserInput, db *sql.DB, w http.ResponseWriter) erro
 		var sessionLastId = int64(input.SessionID)
 
 		if session != nil {
-			if input.ContentID != nil {
+			if input.IsReply && input.ContentID != nil {
 				// 查询 content ID 比 ContentID 大的记录并删除
 				if err = delHistoryInContentIDBySessionID(db, int64(input.SessionID), int64(*input.ContentID)); err != nil {
 					return fmt.Errorf("failed to delete history: %w", err)

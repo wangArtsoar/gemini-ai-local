@@ -8,7 +8,7 @@
     <link href="templates/http_cdnjs.cloudflare.com_ajax_libs_font-awesome_6.2.0_css_all.css" rel="stylesheet">
     <link href="templates/http_cdnjs.cloudflare.com_ajax_libs_highlight.js_11.8.0_styles_github.min.css"
           rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet">
+    <link href="templates/http_cdnjs.cloudflare.com_ajax_libs_font-awesome_5.15.4_css_all" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <script src="templates/http_cdn.jsdelivr.net_npm_marked_marked.min.js"></script>
     <script src="templates/http_cdnjs.cloudflare.com_ajax_libs_highlight.js_11.8.0_highlight.min.js"></script>
@@ -43,15 +43,12 @@
             <button id="new-conversation-button" onclick="startNewConversation()"><i class="fas fa-comment-dots"></i>
             </button>
             <label for="file-input" id="select-file-label"> + </label>
-            <!--            <input id="file-input" multiple onchange="handleFiles(this.files)" style="display: none;" type="file">-->
-            <!--            <textarea id="user-input" oninput="adjustTextareaHeight()" placeholder="Type your question..."-->
-            <!--                      style="width: 696px; height: 5px;"></textarea>-->
             <input id="file-input" multiple onchange="handleFiles(this.files)" style="display: none;" type="file">
             <div id="fileInfo" style="display: none"></div>
             <textarea id="user-input" oninput="adjustTextareaHeight()" onpaste="handlePaste(event)"
                       placeholder="Type your question or paste your file content here..."
                       style="width: 696px; height: 5px;"></textarea>
-            <button id="send-button" onclick="sendMessage()">Send</button>
+            <button id="send-button" onclick="sendMessage(false)">Send</button>
         </div>
     </div>
 
