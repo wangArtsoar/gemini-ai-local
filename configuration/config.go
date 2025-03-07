@@ -48,6 +48,7 @@ var CustomMIMEs = map[string]struct{}{
 	"video/3gpp":               {},
 	"audio/wav":                {},
 	"audio/mp3":                {},
+	"audio/mpeg":               {},
 	"audio/aiff":               {},
 	"audio/aac":                {},
 	"audio/ogg":                {},

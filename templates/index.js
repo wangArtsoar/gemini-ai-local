@@ -86,6 +86,8 @@ function changeModel() {
         });
 }
 
+let uploadedFiles = [];
+
 function handlePaste(event) {
     // Check if the paste event contains files
     if (event.clipboardData.files.length > 0) {
@@ -98,40 +100,46 @@ function handlePaste(event) {
 
 function handleFiles(files) {
     const chatContainer = document.getElementById("chat-container");
-    const uploadedInfoDiv = document.createElement("div");
+    const uploadedInfoDiv = document.getElementById("uploaded-files-info") || document.createElement("div");
 
     chatContainer.style.display = "block";
     uploadedInfoDiv.id = "uploaded-files-info";
     uploadedInfoDiv.style.display = "block";
 
+    // 清空现有内容，重新渲染
+    uploadedInfoDiv.innerHTML = '';
+
     Array.from(files).forEach(file => {
         const fileContainer = document.createElement("div");
         fileContainer.className = "file-info-container";
+        fileContainer.dataset.fileIndex = uploadedFiles.indexOf(file); // 存储文件索引
 
         if (file.type.startsWith("image/")) {
-            // Handle image files
             const img = document.createElement("img");
             img.src = URL.createObjectURL(file);
             img.onload = () => URL.revokeObjectURL(img.src);
             fileContainer.appendChild(img);
         } else {
-            // Handle other file types
             const fileInfo = document.createElement("p");
             fileInfo.textContent = `${file.name} (${formatFileSize(file.size)})`;
             fileContainer.appendChild(fileInfo);
         }
 
-        // Add delete button
         const deleteBtn = document.createElement("button");
         deleteBtn.className = "file-delete-btn";
         deleteBtn.innerHTML = "×";
         deleteBtn.onclick = () => {
-            fileContainer.remove();
-            if (uploadedInfoDiv.children.length === 0) {
-                uploadedInfoDiv.style.display = "none";
-                chatContainer.scrollTop = chatContainer.scrollHeight;
+            const fileIndex = parseInt(fileContainer.dataset.fileIndex);
+            if (fileIndex >= 0) {
+                uploadedFiles.splice(fileIndex, 1);
+                fileContainer.remove();
+                if (uploadedInfoDiv.children.length === 0) {
+                    uploadedInfoDiv.style.display = "none";
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+                handleFiles(uploadedFiles); // 重新渲染剩余文件
             }
-        }
+        };
         fileContainer.appendChild(deleteBtn);
 
         uploadedInfoDiv.appendChild(fileContainer);
@@ -140,10 +148,15 @@ function handleFiles(files) {
     chatContainer.appendChild(uploadedInfoDiv);
 }
 
-function formatFileSize(bytes) {
-    if (bytes < 1024) return bytes + " B";
-    else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
-    else return (bytes / 1048576).toFixed(1) + " MB";
+function formatFileSize(size) {
+    const units = ['B', 'KB', 'MB', 'GB'];
+    let index = 0;
+    let sizeInUnit = size;
+    while (sizeInUnit >= 1024 && index < units.length - 1) {
+        sizeInUnit /= 1024;
+        index++;
+    }
+    return `${sizeInUnit.toFixed(2)} ${units[index]}`;
 }
 
 async function sendMessage(isReply) {
@@ -183,8 +196,7 @@ async function sendMessage(isReply) {
                     const isMediaFile = mediaTypes.some(type => mimeType.startsWith(type));
                     const isSupportedFile = getFileIcon(mimeType) !== "far fa-file";
                     // Check if video file is not supported for certain models
-                    if (mimeType.startsWith('video/') &&
-                        (selectedModel === 'gemini-2.0-flash-thinking-exp')) {
+                    if (mimeType.startsWith('video/') && selectedModel === 'gemini-2.0-flash-thinking-exp') {
                         alert("当前模型不支持视频文件输入。");
                         return;
                     }
@@ -241,11 +253,11 @@ async function sendMessage(isReply) {
         }
 
         await updateHistoryListFromServer();
+        await loadHistoryById(getSessionId(), "")
     } catch (error) {
         handleError(conversationContainer, error);
     } finally {
         fileInput.value = ""
-        await loadHistoryById(getSessionId(), "")
         adjustTextareaHeight()
     }
 }
@@ -569,16 +581,17 @@ function addButtons(aiMessageElement, aiMessageElementOnCopy, userMessage) {
     retryButton.className = "copy-btn";
     retryButton.style.backgroundColor = "#f0ad4e"; // 设置按钮颜色为橙色
     retryButton.onclick = async () => {
-        const conversation = retryButton.closest('.conversation').parentElement.querySelector('.conversation');
-        const content_id = conversation.dataset.content_id;
+        const conversation = retryButton.closest('.conversation');
+        const previousConversation = conversation.previousElementSibling;
+        const content_id = previousConversation.dataset.content_id;
+        console.log("content_id", content_id)
         const userInput = document.getElementById("user-input");
         const fileInput = document.getElementById("file-input");
 
         userInput.value = userMessage;
         userInput.dataset.content_id = content_id;
 
-        // Get all files from the previous user message
-        const fileContainers = conversation.querySelector(".user-message").querySelectorAll('.file-container');
+        const fileContainers = previousConversation.querySelector(".user-message").querySelector('.file-container');
         if (fileContainers && fileContainers.length > 0) {
             const dataTransfer = new DataTransfer();
             fileContainers.forEach(container => {
@@ -1260,73 +1273,134 @@ function toggleHistory() {
     sidebar.classList.toggle('collapsed');
 }
 
-function exportToPDF() {
-    const pdf = new jsPDF();
-    // 从在线链接加载字体数据
-    fetch('/templates/NotoSansSC-Regular.ttf')
-        .then(response => response.arrayBuffer())
-        .then(fontBuffer => {
-            // 将字体数据转换为 base64 字符串
-            const fontBase64 = arrayBufferToBase64(fontBuffer);
-
-            // 实例化 PDF 并添加字体
-            pdf.addFileToVFS("NotoSansSC-Regular.ttf", fontBase64);
-            pdf.addFont("NotoSansSC-Regular.ttf", "NotoSansSC", "normal");
-            pdf.setFont("NotoSansSC");
-
-            // 获取内容
-            const chatContainer = document.getElementById("chat-container");
-            const conversations = chatContainer.getElementsByClassName("conversation");
-            const title = document.getElementById("conversation-title").textContent.trim();
-
-            const margin = 40;
-            const pageWidth = pdf.internal.pageSize.width;
-            const maxWidth = pageWidth - 2 * margin;
-            let yPosition = 40;
-
-            // 设置标题
-            pdf.setFontSize(16);
-            pdf.text(title, margin, yPosition);
-            yPosition += 30;
-
-            // 设置内容
-            pdf.setFontSize(12);
-            Array.from(conversations).forEach(conv => {
-                if (yPosition > pdf.internal.pageSize.height - 40) {
-                    pdf.addPage();
-                    yPosition = 40;
-                }
-                const userMessage = conv.querySelector(".user-message")?.textContent || "";
-                const aiMessage = conv.querySelector(".ai-message")?.textContent || "";
-
-                if (userMessage) {
-                    const lines = pdf.splitTextToSize(`User: ${userMessage}`, maxWidth);
-                    pdf.text(lines, margin, yPosition);
-                    yPosition += lines.length * 10 + 10;
-                }
-
-                if (aiMessage) {
-                    const lines = pdf.splitTextToSize(`Assistant: ${aiMessage}`, maxWidth);
-                    pdf.text(lines, margin, yPosition);
-                    yPosition += lines.length * 10 + 10;
-                }
-            });
-
-            // 保存 PDF
-            pdf.save(`${title}.pdf`);
-        })
-        .catch(error => {
-            console.error('Error loading font:', error);
-            alert('加载字体失败，请重试');
+async function fetchFontAndConvertToBase64(fontURL) {
+    try {
+        const response = await fetch(fontURL);
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const blob = await response.blob();
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const base64Data = reader.result;
+                // IMPORTANT: Log the result to confirm it's valid.
+                console.log("Font loaded and converted:", base64Data.substring(0, 50) + "..."); // Log first 50 chars
+                resolve(base64Data);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
         });
+    } catch (error) {
+        console.error("Error fetching or converting font:", error);
+        return null; // Return null on error
+    }
 }
 
-// 辅助函数：将 ArrayBuffer 转换为 base64 字符串
-function arrayBufferToBase64(buffer) {
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
+async function exportToPDF() {
+    const pdf = new window.jspdf.jsPDF('p', 'pt', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 40;
+    let y = margin;
+
+    // 加载自定义字体
+    const fontURL = '/templates/NotoSansSC-Regular.ttf';
+    const base64FontData = await fetchFontAndConvertToBase64(fontURL);
+    if (!base64FontData) {
+        console.error("Failed to fetch or convert font.");
+        alert('Failed to load font. Please try again.');
+        return;
     }
-    return btoa(binary);
+    const base64FontString = base64FontData.split(',')[1];
+    pdf.addFileToVFS('NotoSansSC-Regular.ttf', base64FontString);
+    pdf.addFont('NotoSansSC-Regular.ttf', 'NotoSansSC', 'normal');
+    pdf.setFont('NotoSansSC');
+
+    // 设置基础样式
+    const lineHeight = 15; // 每行高度
+    pdf.setFontSize(12);
+
+    const chatContainer = document.getElementById("chat-container");
+    const titleElement = document.getElementById("conversation-title");
+
+    if (!chatContainer || !titleElement) {
+        alert('HTML elements not found.');
+        return;
+    }
+
+    // 获取标题用于文件名，但不显示在 PDF 内容中
+    const title = titleElement.textContent.trim().normalize('NFKC');
+
+    // 计算当前页剩余行数
+    function getRemainingLines() {
+        return Math.floor((pageHeight - margin - y) / lineHeight);
+    }
+
+    // 绘制文本并处理分页
+    function drawTextWithPagination(lines, textColor) {
+        let remainingLines = getRemainingLines();
+
+        // 如果当前页没有足够空间，换页
+        if (remainingLines <= 0) {
+            pdf.addPage();
+            y = margin; // 移除标题后，直接从 margin 开始
+            remainingLines = getRemainingLines();
+        }
+
+        // 截取当前页能显示的行数
+        const linesToDraw = lines.slice(0, remainingLines);
+        const remainingTextLines = lines.slice(remainingLines);
+
+        // 绘制当前页的文本
+        pdf.setFontSize(12);
+        pdf.setTextColor(...textColor); // 解构 textColor 数组为单独参数
+        pdf.text(linesToDraw, margin, y);
+        y += linesToDraw.length * lineHeight;
+
+        // 如果还有剩余行，递归处理
+        if (remainingTextLines.length > 0) {
+            pdf.addPage();
+            y = margin; // 移除标题后，直接从 margin 开始
+            drawTextWithPagination(remainingTextLines, textColor);
+        }
+    }
+
+    const conversations = chatContainer.getElementsByClassName("conversation");
+
+    for (const conv of conversations) {
+        // 用户消息
+        const userMsg = conv.querySelector(".user-message");
+        if (userMsg) {
+            const userText = userMsg.innerText.trim().normalize('NFKC');
+            const userLines = pdf.splitTextToSize(userText, pageWidth - 2 * margin);
+
+            // 绘制用户消息（蓝色）
+            drawTextWithPagination(userLines, [0, 0, 255]);
+            y += 5; // 用户消息后加 5pt 间距
+        }
+
+        // AI 回复
+        const aiMsg = conv.querySelector(".ai-message:not(.copy)") || conv.querySelector(".ai-message.copy");
+        if (aiMsg) {
+            const aiText = aiMsg.innerText.trim().normalize('NFKC');
+            const aiLines = pdf.splitTextToSize(aiText, pageWidth - 2 * margin);
+
+            // 绘制 AI 回复（绿色）
+            drawTextWithPagination(aiLines, [0, 128, 0]);
+            y += 10; // AI 回复后加 10pt 间距
+        }
+
+        // 对话之间的间距
+        y += 5;
+
+        // 如果接近页面底部，换页
+        if (y > pageHeight - margin - 30) {
+            pdf.addPage();
+            y = margin; // 移除标题后，直接从 margin 开始
+        }
+    }
+
+    // 使用标题作为文件名
+    pdf.save(`${title}.pdf`);
 }
