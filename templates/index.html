@@ -5,13 +5,15 @@
     <meta content="width=device-width, initial-scale=1.0" name="viewport">
     <title>{{.Title}}</title>
     <link href="templates/index.css" rel="stylesheet">
-    <link href="templates/http_cdnjs.cloudflare.com_ajax_libs_font-awesome_6.2.0_css_all.css" rel="stylesheet">
-    <link href="templates/http_cdnjs.cloudflare.com_ajax_libs_highlight.js_11.8.0_styles_github.min.css"
+    <link href="templates/sdk/http_cdnjs.cloudflare.com_ajax_libs_font-awesome_6.2.0_css_all.css" rel="stylesheet">
+    <link href="templates/sdk/http_cdnjs.cloudflare.com_ajax_libs_highlight.js_11.8.0_styles_github.min.css"
           rel="stylesheet">
-    <link href="templates/http_cdnjs.cloudflare.com_ajax_libs_font-awesome_5.15.4_css_all" rel="stylesheet">
+    <link href="templates/sdk/http_cdnjs.cloudflare.com_ajax_libs_font-awesome_5.15.4_css_all.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-    <script src="templates/http_cdn.jsdelivr.net_npm_marked_marked.min.js"></script>
-    <script src="templates/http_cdnjs.cloudflare.com_ajax_libs_highlight.js_11.8.0_highlight.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC&display=swap" rel="stylesheet">
+    <script src="templates/sdk/http_cdn.jsdelivr.net_npm_marked_marked.min.js"></script>
+    <script src="templates/sdk/http_cdnjs.cloudflare.com_ajax_libs_highlight.js_11.8.0_highlight.min.js"></script>
+    <script src="templates/sdk/http_cdnjs.cloudflare.com_ajax_libs_jspdf_2.5.1_jspdf.umd.js"></script>
 </head>
 <body>
 <script src="templates/index.js"></script>
@@ -28,6 +30,9 @@
             <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
         </select>
         <!-- Theme Toggle Button -->
+        <button id="export-pdf" onclick="exportToPDF()">
+            <i class="fas fa-file-pdf"></i>
+        </button>
         <button id="theme-toggle">
             <i class="fas fa-sun"></i>
         </button>

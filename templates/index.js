@@ -163,7 +163,7 @@ async function sendMessage(isReply) {
     // Process images if files exist
     if (files) {
         const totalSize = Array.from(files).reduce((sum, file) => sum + file.size, 0);
-        const maxSize = 200 * 1024 * 1024; // 20MB in bytes
+        const maxSize = 200 * 1024 * 1024; // 200MB in bytes
 
         if (totalSize > maxSize) {
             alert("文件总大小不能超过200MB。");
@@ -184,7 +184,7 @@ async function sendMessage(isReply) {
                     const isSupportedFile = getFileIcon(mimeType) !== "far fa-file";
                     // Check if video file is not supported for certain models
                     if (mimeType.startsWith('video/') &&
-                        (selectedModel === 'gemini-2.0-pro' || selectedModel === 'gemini-2.0-flash-thinking-exp')) {
+                        (selectedModel === 'gemini-2.0-flash-thinking-exp')) {
                         alert("当前模型不支持视频文件输入。");
                         return;
                     }
@@ -246,6 +246,7 @@ async function sendMessage(isReply) {
     } finally {
         fileInput.value = ""
         await loadHistoryById(getSessionId(), "")
+        adjustTextareaHeight()
     }
 }
 
@@ -1257,4 +1258,75 @@ const sidebar = document.getElementById('sidebar');
 
 function toggleHistory() {
     sidebar.classList.toggle('collapsed');
+}
+
+function exportToPDF() {
+    const pdf = new jsPDF();
+    // 从在线链接加载字体数据
+    fetch('/templates/NotoSansSC-Regular.ttf')
+        .then(response => response.arrayBuffer())
+        .then(fontBuffer => {
+            // 将字体数据转换为 base64 字符串
+            const fontBase64 = arrayBufferToBase64(fontBuffer);
+
+            // 实例化 PDF 并添加字体
+            pdf.addFileToVFS("NotoSansSC-Regular.ttf", fontBase64);
+            pdf.addFont("NotoSansSC-Regular.ttf", "NotoSansSC", "normal");
+            pdf.setFont("NotoSansSC");
+
+            // 获取内容
+            const chatContainer = document.getElementById("chat-container");
+            const conversations = chatContainer.getElementsByClassName("conversation");
+            const title = document.getElementById("conversation-title").textContent.trim();
+
+            const margin = 40;
+            const pageWidth = pdf.internal.pageSize.width;
+            const maxWidth = pageWidth - 2 * margin;
+            let yPosition = 40;
+
+            // 设置标题
+            pdf.setFontSize(16);
+            pdf.text(title, margin, yPosition);
+            yPosition += 30;
+
+            // 设置内容
+            pdf.setFontSize(12);
+            Array.from(conversations).forEach(conv => {
+                if (yPosition > pdf.internal.pageSize.height - 40) {
+                    pdf.addPage();
+                    yPosition = 40;
+                }
+                const userMessage = conv.querySelector(".user-message")?.textContent || "";
+                const aiMessage = conv.querySelector(".ai-message")?.textContent || "";
+
+                if (userMessage) {
+                    const lines = pdf.splitTextToSize(`User: ${userMessage}`, maxWidth);
+                    pdf.text(lines, margin, yPosition);
+                    yPosition += lines.length * 10 + 10;
+                }
+
+                if (aiMessage) {
+                    const lines = pdf.splitTextToSize(`Assistant: ${aiMessage}`, maxWidth);
+                    pdf.text(lines, margin, yPosition);
+                    yPosition += lines.length * 10 + 10;
+                }
+            });
+
+            // 保存 PDF
+            pdf.save(`${title}.pdf`);
+        })
+        .catch(error => {
+            console.error('Error loading font:', error);
+            alert('加载字体失败，请重试');
+        });
+}
+
+// 辅助函数：将 ArrayBuffer 转换为 base64 字符串
+function arrayBufferToBase64(buffer) {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
 }
