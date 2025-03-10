@@ -591,7 +591,7 @@ function addButtons(aiMessageElement, aiMessageElementOnCopy, userMessage) {
         userInput.value = userMessage;
         userInput.dataset.content_id = content_id;
 
-        const fileContainers = previousConversation.querySelector(".user-message").querySelector('.file-container');
+        const fileContainers = previousConversation.querySelector(".user-message").querySelectorAll('.file-container');
         if (fileContainers && fileContainers.length > 0) {
             const dataTransfer = new DataTransfer();
             fileContainers.forEach(container => {
