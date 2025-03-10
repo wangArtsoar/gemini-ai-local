@@ -121,8 +121,7 @@ func InitHistoryDir() error {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT,
                 session_base TEXT NOT NULL,
-                create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_limited INTEGER default 0
+                create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );`,
 		},
 		{

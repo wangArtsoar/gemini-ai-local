@@ -236,12 +236,7 @@ async function sendMessage(isReply) {
         const chatResponse = await fetchChatResponse(userMessage, sessionId, content_id, fileBase64s, isReply);
         if (!chatResponse.ok) {
             if (chatResponse.status === 429) {
-                disableUIForRateLimit(inputField);
-                lockSession()
-                throw new Error('已达到限制。');
-            }
-            if (chatResponse.status === 400) {
-                throw new Error('请检查本机的设置中是否已经设置了代理，如果有请关闭代理。');
+                throw new Error('发生了错误，请切换模型并刷新重试');
             }
             throw new Error(`Chat API error: ${chatResponse.status} - ${await getErrorMessage(chatResponse)}`);
         }
@@ -332,21 +327,6 @@ async function fetchChatResponse(userMessage, sessionId, content_id, fileBase64s
             is_reply: isReply
         }),
     });
-}
-
-async function lockSession() {
-    const sessionId = getSessionId();
-    if (!sessionId) return;
-
-    try {
-        const response = await fetch(`/lockSession/${sessionId}`, {method: "PUT"});
-        if (!response.ok) {
-            throw new Error(`Failed to lock session: ${response.status}`);
-        }
-        console.log("Session locked successfully.");
-    } catch (error) {
-        console.error("Error locking session:", error);
-    }
 }
 
 async function getErrorMessage(response) {
@@ -749,8 +729,6 @@ async function updateChatUI(id, historyData) {
         chatContainer.appendChild(conversationContainer);
     });
 
-    await checkAndDisableUIForRateLimit(id);
-
     // 滚动条保持在底部
     chatContainer.scrollTop = chatContainer.scrollHeight;
 
@@ -1020,29 +998,6 @@ async function loadHistoryById(id, title) {
 
     } catch (error) {
         console.error("加载历史记录时出错:", error);
-    }
-}
-
-async function checkAndDisableUIForRateLimit(inputField) {
-    try {
-        const sessionId = getSessionId();
-        if (!sessionId) return;
-
-        const response = await fetch(`/sessionLimitedByID?id=${sessionId}`, {
-            method: "GET"
-        });
-
-        if (!response.ok) {
-            console.error("Failed to check session limit status:", response.status);
-            return;
-        }
-
-        const isLimited = await response.json();
-        if (isLimited) {
-            disableUIForRateLimit(inputField);
-        }
-    } catch (error) {
-        console.error("Error checking session limit status:", error);
     }
 }
 

@@ -23,47 +23,7 @@ func Register() *http.ServeMux {
 	r.HandleFunc("GET /lastSessionID", handleLastSessionID)
 	r.HandleFunc("DELETE /deleteHistory/{id}", handleDeleteHistory)
 	r.HandleFunc("PUT /edit-history/{sessionId}", handleEditHistoryTitle)
-	r.HandleFunc("PUT /lockSession/{id}", handleLockSession)
-	r.HandleFunc("GET /sessionLimitedByID", handleSessionLimitedByID)
 	return r
-}
-
-func handleSessionLimitedByID(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(r.URL.Query().Get("id"))
-	if err != nil {
-		log.Println("Failed to parse ID:", err)
-		http.Error(w, "Invalid ID parameter", http.StatusBadRequest)
-		return
-	}
-
-	flag, err := domain.FindSessionLimitedByID(configuration.DB, int64(id))
-	if err != nil {
-		log.Println("Failed to find session:", err)
-		http.Error(w, "Failed to find session", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(flag); err != nil {
-		log.Println("Failed to encode response:", err)
-		http.Error(w, "Failed to generate response", http.StatusInternalServerError)
-		return
-	}
-}
-
-func handleLockSession(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(r.PathValue("id"))
-	if err != nil {
-		log.Println(err)
-		http.Error(w, "Failed to parse request", http.StatusBadRequest)
-		return
-	}
-	err = domain.LockSession(configuration.DB, int64(id))
-	if err != nil {
-		log.Println(err)
-		http.Error(w, "Failed to parse request", http.StatusInternalServerError)
-		return
-	}
 }
 
 func handleEditHistoryTitle(w http.ResponseWriter, r *http.Request) {
