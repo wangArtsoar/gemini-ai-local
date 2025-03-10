@@ -151,13 +151,6 @@ func InitHistoryDir() error {
     			data BLOB NOT NULL
             );`,
 		},
-		{
-			"tool",
-			`CREATE TABLE IF NOT EXISTS tool (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                session_id INTEGER NOT NULL
-            );`,
-		},
 	}
 
 	for _, table := range tables {
