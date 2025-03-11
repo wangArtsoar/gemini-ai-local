@@ -34,7 +34,7 @@ import (
 var fs embed.FS
 
 // 全局变量，存储选中的项目简介
-var selectedDescription string = fmt.Sprintln(fmt.Sprint(`使用的AI : Google Gemini
+var selectedDescription = fmt.Sprintln(fmt.Sprint(`使用的AI : Google Gemini
 作者 : xiaoyi
 编程语言 : Go、JS
 
@@ -42,25 +42,47 @@ var selectedDescription string = fmt.Sprintln(fmt.Sprint(`使用的AI : Google G
 	`))
 
 func init() {
+	// Show initialization dialog
+	go func() {
+		walk.MsgBox(nil, "初始化", "初始化中，请等待...", walk.MsgBoxIconInformation)
+	}()
+
+	var initErr error
+	defer func() {
+		if initErr != nil {
+			walk.MsgBox(nil, "错误", "初始化失败："+initErr.Error(),
+				walk.MsgBoxIconError|walk.MsgBoxOK)
+			os.Exit(1)
+		}
+	}()
+
 	readFile, err := fs.ReadFile("templates/static/.env")
 	if err != nil {
-		panic(err)
+		initErr = fmt.Errorf("读取环境变量文件失败: %w", err)
+		return
 	}
+
 	configuration.EnvMap, err = godotenv.UnmarshalBytes(readFile)
 	if err != nil {
-		panic(err)
+		initErr = fmt.Errorf("解析环境变量失败: %w", err)
+		return
 	}
+
 	fmt.Println("环境变量加载完成")
-	// 1. 加载配置文件
+
 	fileBytes, err := fs.ReadFile(configuration.EnvMap["CONFIG_DIR"])
 	if err != nil {
-		panic(err)
+		initErr = fmt.Errorf("读取配置文件失败: %w", err)
+		return
 	}
+
 	clog.SetLevel(clog.SILENT)
 	cfg, err := config.Parse(fileBytes)
 	if err != nil {
-		panic(err)
+		initErr = fmt.Errorf("解析配置文件失败: %w", err)
+		return
 	}
+
 	cfg.General.ExternalController = configuration.EnvMap["EXT_CTRL"]
 	cfg.General.LogLevel = clog.SILENT
 	if cfg.General.ExternalUI != "" {
@@ -68,28 +90,45 @@ func init() {
 	}
 
 	go route.Start(cfg.General.ExternalController, cfg.General.Secret)
-
 	executor.ApplyConfig(cfg, true)
-	// 创建代理URL
+
 	proxyURL, err := url.Parse(configuration.EnvMap["PROXY_URI"])
 	if err != nil {
-		panic(err)
+		initErr = fmt.Errorf("解析代理URL失败: %w", err)
+		return
 	}
 
 	transport := &http.Transport{
 		Proxy: http.ProxyURL(proxyURL),
 	}
 
-	configuration.HttpClient = &http.Client{
+	configuration.HttpClientWithPort = &http.Client{
 		Transport: transport,
 	}
+
 	fmt.Println("配置文件加载完成")
-	configuration.InitHistoryDir()
+
+	if err = configuration.InitHistoryDir(); err != nil {
+		initErr = fmt.Errorf("初始化历史目录失败: %w", err)
+		return
+	}
+
 	configuration.Fs = &fs
 	configuration.AIApi = configuration.BuildAIApi("", "")
+
 	if err = configuration.InitializeDBPool(configuration.DbPath); err != nil {
-		panic(err)
+		initErr = fmt.Errorf("初始化数据库连接池失败: %w", err)
+		return
 	}
+
+	if err = configuration.VerifyGoogleAccess(); err != nil {
+		initErr = fmt.Errorf("验证Google访问失败: %w", err)
+		return
+	}
+
+	// Close the initialization dialog by showing a success message
+	walk.MsgBox(nil, "初始化完成", "程序初始化成功！",
+		walk.MsgBoxIconInformation|walk.MsgBoxOK)
 }
 
 // 添加端口检查函数

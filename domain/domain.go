@@ -101,17 +101,47 @@ func (r *RequestBody) sendRequest(body []byte) (*http.Response, error) {
 	req.Header.Set("x-goog-api-key", configuration.AIApi)
 
 	// 发送请求
-	resp, err := configuration.HttpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("error sending request: %v", err)
+	//resp, err := configuration.HttpClientWithPort.Do(req)
+	//if err != nil {
+	//	return nil, fmt.Errorf("error sending request: %v", err)
+	//}
+	//// 检查响应状态码
+	//if resp.StatusCode != http.StatusOK {
+	//	configuration.HttpState = resp.StatusCode
+	//	body, _ := io.ReadAll(resp.Body)
+	//	log.Println(string(body))
+	//	return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	//}
+	// 尝试使用当前客户端发送请求
+	if configuration.CurrentClient == nil {
+		configuration.CurrentClient = configuration.HttpClientWithPort
+	}
+	resp, err := configuration.CurrentClient.Do(req)
+
+	// 如果请求失败，切换到另一个客户端重试
+	if err != nil || (resp != nil && resp.StatusCode != http.StatusOK) {
+		if configuration.CurrentClient == configuration.HttpClientWithPort {
+			configuration.CurrentClient = configuration.HttpClientWithout
+		} else {
+			configuration.CurrentClient = configuration.HttpClientWithPort
+		}
+		resp, err = configuration.CurrentClient.Do(req)
 	}
 
-	// 检查响应状态码
+	if err != nil {
+		return nil, fmt.Errorf("request failed with both clients: %v", err)
+	}
+
+	if resp == nil {
+		return nil, fmt.Errorf("no response from server")
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		configuration.HttpState = resp.StatusCode
 		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
 		log.Println(string(body))
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("request failed with status code: %d", resp.StatusCode)
 	}
 
 	return resp, nil

@@ -304,15 +304,15 @@ func saveSession(ctx context.Context, tx *sql.Tx, session *persistence.Session) 
 	}
 
 	if session != nil {
-		_, err = tx.ExecContext(ctx, `UPDATE session SET session_base=?, create_at=? WHERE id= ?`,
+		_, err = tx.ExecContext(ctx, `UPDATE session SET session_base=?, update_at=? WHERE id= ?`,
 			sessionBase, time.Now(), session.ID)
 		if err != nil {
 			return 0, err
 		}
 		return session.ID, nil
 	} else {
-		sessionResult, err := tx.ExecContext(ctx, `INSERT INTO session(title,session_base, create_at) VALUES (?,?,?)`,
-			"", sessionBase, time.Now())
+		sessionResult, err := tx.ExecContext(ctx, `INSERT INTO session(title,session_base, create_at,update_at) VALUES (?,?,?,?)`,
+			"", sessionBase, time.Now(), time.Now())
 		if err != nil {
 			return 0, err
 		}
@@ -339,7 +339,7 @@ func PostRequestOnClient(input configuration.UserInput) (*http.Response, error) 
 	}
 	request.Header.Set("Content-Type", "application/json")
 
-	resp, err := configuration.HttpClient.Do(request)
+	resp, err := configuration.CurrentClient.Do(request)
 	if err != nil {
 		return nil, err
 	}
@@ -406,6 +406,10 @@ func saveHistory(ctx context.Context, tx *sql.Tx, sessionID int64, role string, 
 		}
 	}
 
+	_, err = tx.ExecContext(ctx, `UPDATE session SET update_at=? WHERE id= ?`, time.Now(), sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to insert content: %w", err)
+	}
 	return nil
 }
 

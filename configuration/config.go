@@ -11,14 +11,16 @@ import (
 )
 
 var (
-	Fs              *embed.FS
-	EnvMap          map[string]string
-	HttpClient      *http.Client
-	AIApi           string
-	DbPath          = "./history/persistence.db"
-	DB              *sql.DB
-	DefaultModelInt = "gemini-2.0-flash"
-	HttpState       = 200
+	Fs                 *embed.FS
+	EnvMap             map[string]string
+	HttpClientWithPort *http.Client
+	HttpClientWithout  = http.DefaultClient
+	CurrentClient      *http.Client
+	AIApi              string
+	DbPath             = "./history/persistence.db"
+	DB                 *sql.DB
+	DefaultModelInt    = "gemini-2.0-flash"
+	HttpState          = 200
 )
 
 var CustomMIMEs = map[string]struct{}{
@@ -121,7 +123,8 @@ func InitHistoryDir() error {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT,
                 session_base TEXT NOT NULL,
-                create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                update_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );`,
 		},
 		{
@@ -191,4 +194,41 @@ func BuildAIApi(DefaultModel, ContentType string) string {
 	}
 
 	return fmt.Sprintf("%s%s:%skey=%s", GeminiBaseURL, DefaultModel, ContentType, GeminiApiKey)
+}
+
+func VerifyGoogleAccess() error {
+	testURL := "https://youtube.com"
+	timeout := 3 * time.Second
+
+	clientWithPort := *HttpClientWithPort
+	clientWithPort.Timeout = timeout
+	clientWithout := *HttpClientWithout
+	clientWithout.Timeout = timeout
+
+	withPortResp, withPortErr := clientWithPort.Get(testURL)
+	withoutResp, withoutErr := clientWithout.Get(testURL)
+	withPortOK := withPortErr == nil && withPortResp != nil && withPortResp.StatusCode == http.StatusOK
+	withoutOK := withoutErr == nil && withoutResp != nil && withoutResp.StatusCode == http.StatusOK
+
+	if withPortResp != nil {
+		withPortResp.Body.Close()
+	}
+	if withoutResp != nil {
+		withoutResp.Body.Close()
+	}
+
+	if withoutOK {
+		CurrentClient = HttpClientWithout
+		return nil
+	}
+
+	if withPortOK {
+		CurrentClient = HttpClientWithPort
+		return nil
+	}
+
+	if CurrentClient == nil {
+		return fmt.Errorf("Gemini API not initialized")
+	}
+	return nil
 }
