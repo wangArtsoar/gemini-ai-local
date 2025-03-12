@@ -342,11 +342,28 @@ function editMessage(messageElement, originalText, originalFiles = []) {
     filePreview.className = "edit-file-preview";
 
     // Add original files to preview
+    // Add original files to preview
     if (originalFiles.length > 0) {
-        originalFiles.forEach(file => {
+        originalFiles.forEach((file, index) => {
             const fileContainer = document.createElement("div");
             fileContainer.className = "file-container";
+            fileContainer.style.position = "relative";
+
+            // Add delete button
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className = "file-delete-btn";
+            deleteBtn.innerHTML = "×";
+            deleteBtn.style.position = "absolute";
+            deleteBtn.style.right = "5px";
+            deleteBtn.style.top = "5px";
+            deleteBtn.style.zIndex = "1";
+            deleteBtn.onclick = () => {
+                originalFiles.splice(index, 1);
+                fileContainer.remove();
+            };
+
             fileUI(fileContainer, file, file.mime_type);
+            fileContainer.appendChild(deleteBtn);
             filePreview.appendChild(fileContainer);
         });
     }
@@ -360,23 +377,41 @@ function editMessage(messageElement, originalText, originalFiles = []) {
     saveButton.className = "save-edit-btn";
     saveButton.textContent = "提交";
     saveButton.onclick = async () => {
+        // Handle new files from the file input
         const newFiles = await handleFileInput(fileInput);
-        // Set the input field value and files before sending
+
+        // Set the input field value and prepare file handling
         const inputField = document.getElementById("user-input");
         inputField.value = textarea.value;
-        const globalFileInput = document.getElementById("file-input");
+
         // Get content_id from the parent conversation container
         const conversation = messageElement.closest('.conversation');
         inputField.dataset.content_id = conversation ? conversation.dataset.content_id : null;
+
+        // Create a DataTransfer object to handle files
+        const dt = new DataTransfer();
+
+        // Add existing files that are already in base64 format
+        if (originalFiles && originalFiles.length > 0) {
+            originalFiles.forEach(file => {
+                const blob = base64ToBlob(file.data, file.mime_type);
+                const existingFile = new File([blob], `file.${file.mime_type.split('/')[1]}`, {type: file.mime_type});
+                dt.items.add(existingFile);
+            });
+        }
+
+        // Add new files from file input
         if (newFiles.length > 0) {
-            const dt = new DataTransfer();
             newFiles.forEach(file => {
                 const blob = base64ToBlob(file.data, file.mime_type);
                 const newFile = new File([blob], `file.${file.mime_type.split('/')[1]}`, {type: file.mime_type});
                 dt.items.add(newFile);
             });
-            globalFileInput.files = dt.files;
         }
+
+        // Set the combined files to the global file input
+        document.getElementById("file-input").files = dt.files;
+
         await sendMessage(true);
         editContainer.remove();
     };
