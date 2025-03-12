@@ -181,7 +181,6 @@ func (r *RequestBody) handleSSEResponse(w http.ResponseWriter, resp *http.Respon
 			line = strings.TrimSpace(line)
 			if strings.HasPrefix(line, "data:") {
 				jsonData = strings.TrimSpace(line[5:]) // 注意这里是 5 而不是 6，因为冒号后面可能没有空格
-				break                                  // 找到 data 行后跳出循环
 			}
 		}
 

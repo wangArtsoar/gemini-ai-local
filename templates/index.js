@@ -101,6 +101,12 @@ function handlePaste(event) {
 function handleFiles(files) {
     const chatContainer = document.getElementById("chat-container");
     const uploadedInfoDiv = document.getElementById("uploaded-files-info") || document.createElement("div");
+    const fileInput = document.getElementById("file-input");
+
+    if (files.length === 0) {
+        chatContainer.style.display = "none";
+        return;
+    }
 
     chatContainer.style.display = "block";
     uploadedInfoDiv.id = "uploaded-files-info";
@@ -110,9 +116,10 @@ function handleFiles(files) {
     uploadedInfoDiv.innerHTML = '';
 
     Array.from(files).forEach(file => {
+        uploadedFiles.push(file);
         const fileContainer = document.createElement("div");
         fileContainer.className = "file-info-container";
-        fileContainer.dataset.fileIndex = uploadedFiles.indexOf(file); // 存储文件索引
+        fileContainer.dataset.fileIndex = String(uploadedFiles.length - 1); // Store index as string
 
         if (file.type.startsWith("image/")) {
             const img = document.createElement("img");
@@ -131,10 +138,18 @@ function handleFiles(files) {
         deleteBtn.onclick = () => {
             const fileIndex = parseInt(fileContainer.dataset.fileIndex);
             if (fileIndex >= 0) {
+                // 从uploadedFiles数组中删除文件
                 uploadedFiles.splice(fileIndex, 1);
                 fileContainer.remove();
+
+                // 更新file input的文件列表
+                const dt = new DataTransfer();
+                uploadedFiles.forEach(file => dt.items.add(file));
+                fileInput.files = dt.files;
+
                 if (uploadedInfoDiv.children.length === 0) {
                     uploadedInfoDiv.style.display = "none";
+                    chatContainer.style.display = "none";
                     chatContainer.scrollTop = chatContainer.scrollHeight;
                 }
                 handleFiles(uploadedFiles); // 重新渲染剩余文件
@@ -257,35 +272,6 @@ async function sendMessage(isReply) {
     }
 }
 
-function disableUIForRateLimit(inputField) {
-    // 禁用所有重新回答按钮
-    document.querySelectorAll('.copy-btn').forEach(btn => {
-        if (btn.textContent === '重新回答') {
-            btn.disabled = true;
-            btn.style.backgroundColor = '#ccc';
-            btn.style.cursor = 'not-allowed';
-        }
-    });
-    // 禁用输入框
-    inputField.disabled = true;
-    inputField.style.backgroundColor = '#f5f5f5';
-}
-
-function enableUIForRateLimit(inputField) {
-    // 启用所有重新回答按钮
-    document.querySelectorAll('.copy-btn')
-        .forEach(btn => {
-            if (btn.textContent === '重新回答') {
-                btn.disabled = false;
-                btn.style.backgroundColor = '#f0ad4e';
-                btn.style.cursor = 'pointer';
-            }
-        });
-    // 启用输入框
-    inputField.disabled = false;
-    inputField.style.backgroundColor = '';
-}
-
 function createConversationContainer(userMessage, fileBase64s = []) {
     const conversationContainer = document.createElement("div");
     conversationContainer.className = "conversation";
@@ -294,25 +280,184 @@ function createConversationContainer(userMessage, fileBase64s = []) {
     userMessageElement.className = "message user-message";
     userMessageElement.style.whiteSpace = "pre-wrap";
 
+    // Create wrapper for message content and edit button
+    const messageWrapper = document.createElement("div");
+    messageWrapper.className = "message-wrapper";
+
+    // Add edit button
+    const editButton = document.createElement("button");
+    editButton.className = "edit-message-btn";
+    editButton.innerHTML = '<i class="fas fa-edit"></i>';
+    editButton.onclick = () => editMessage(userMessageElement, userMessage, fileBase64s);
+
     // Handle the text message
     const textDiv = document.createElement("div");
+    textDiv.className = "message-text";
     textDiv.textContent = userMessage;
-    userMessageElement.appendChild(textDiv);
+
+    messageWrapper.appendChild(textDiv);
+    messageWrapper.appendChild(editButton);
+    userMessageElement.appendChild(messageWrapper);
 
     // Handle media files
     if (fileBase64s.length > 0) {
+        const filesContainer = document.createElement("div");
+        filesContainer.className = "files-container";
+
         fileBase64s.forEach(file => {
             const container = document.createElement("div");
             container.className = "file-container";
-
             fileUI(container, file, file.mime_type);
-
-            userMessageElement.appendChild(container);
+            filesContainer.appendChild(container);
         });
+
+        userMessageElement.appendChild(filesContainer);
     }
 
     conversationContainer.appendChild(userMessageElement);
     return conversationContainer;
+}
+
+function editMessage(messageElement, originalText, originalFiles = []) {
+    const editContainer = document.createElement("div");
+    editContainer.className = "edit-container";
+
+    // Create textarea for text editing
+    const textarea = document.createElement("textarea");
+    textarea.className = "edit-textarea";
+    textarea.value = originalText;
+    textarea.style.width = "100%";
+    textarea.style.minHeight = "60px";
+    textarea.style.resize = "vertical";
+    textarea.addEventListener('input', () => adjustTextareaHeight(textarea));
+
+    // Create file input for new files
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.multiple = true;
+    fileInput.className = "edit-file-input";
+
+    // Create file preview area
+    const filePreview = document.createElement("div");
+    filePreview.className = "edit-file-preview";
+
+    // Add original files to preview
+    if (originalFiles.length > 0) {
+        originalFiles.forEach(file => {
+            const fileContainer = document.createElement("div");
+            fileContainer.className = "file-container";
+            fileUI(fileContainer, file, file.mime_type);
+            filePreview.appendChild(fileContainer);
+        });
+    }
+
+    // Create buttons container
+    const buttonsContainer = document.createElement("div");
+    buttonsContainer.className = "edit-buttons";
+
+    // Save button
+    const saveButton = document.createElement("button");
+    saveButton.className = "save-edit-btn";
+    saveButton.textContent = "提交";
+    saveButton.onclick = async () => {
+        const newFiles = await handleFileInput(fileInput);
+        // Set the input field value and files before sending
+        const inputField = document.getElementById("user-input");
+        inputField.value = textarea.value;
+        const globalFileInput = document.getElementById("file-input");
+        // Get content_id from the parent conversation container
+        const conversation = messageElement.closest('.conversation');
+        inputField.dataset.content_id = conversation ? conversation.dataset.content_id : null;
+        if (newFiles.length > 0) {
+            const dt = new DataTransfer();
+            newFiles.forEach(file => {
+                const blob = base64ToBlob(file.data, file.mime_type);
+                const newFile = new File([blob], `file.${file.mime_type.split('/')[1]}`, {type: file.mime_type});
+                dt.items.add(newFile);
+            });
+            globalFileInput.files = dt.files;
+        }
+        await sendMessage(true);
+        editContainer.remove();
+    };
+
+    // Cancel button
+    const cancelButton = document.createElement("button");
+    cancelButton.className = "cancel-edit-btn";
+    cancelButton.textContent = "取消";
+    cancelButton.onclick = () => {
+        messageElement.innerHTML = ''; // Clear current content
+        updateMessage(messageElement, originalText, originalFiles); // Restore original content
+        editContainer.remove();
+    };
+
+    buttonsContainer.appendChild(saveButton);
+    buttonsContainer.appendChild(cancelButton);
+
+    // Assemble edit container
+    editContainer.appendChild(textarea);
+    editContainer.appendChild(fileInput);
+    editContainer.appendChild(filePreview);
+    editContainer.appendChild(buttonsContainer);
+
+    // Replace original content with edit container
+    messageElement.innerHTML = '';
+    messageElement.appendChild(editContainer);
+
+    // Adjust textarea height
+    adjustTextareaHeight(textarea);
+}
+
+function updateMessage(messageElement, newText, newFiles) {
+    const messageWrapper = document.createElement("div");
+    messageWrapper.className = "message-wrapper";
+
+    const textDiv = document.createElement("div");
+    textDiv.className = "message-text";
+    textDiv.textContent = newText;
+
+    const editButton = document.createElement("button");
+    editButton.className = "edit-message-btn";
+    editButton.innerHTML = '<i class="fas fa-edit"></i>';
+    editButton.onclick = () => editMessage(messageElement, newText, newFiles);
+
+    messageWrapper.appendChild(textDiv);
+    messageWrapper.appendChild(editButton);
+    messageElement.appendChild(messageWrapper);
+
+    if (newFiles.length > 0) {
+        const filesContainer = document.createElement("div");
+        filesContainer.className = "files-container";
+
+        newFiles.forEach(file => {
+            const container = document.createElement("div");
+            container.className = "file-container";
+            fileUI(container, file, file.mime_type);
+            filesContainer.appendChild(container);
+        });
+
+        messageElement.appendChild(filesContainer);
+    }
+}
+
+async function handleFileInput(fileInput) {
+    const files = Array.from(fileInput.files);
+    const fileBase64s = [];
+
+    for (const file of files) {
+        const base64 = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.readAsDataURL(file);
+        });
+
+        fileBase64s.push({
+            mime_type: file.type,
+            data: base64.split(',')[1]
+        });
+    }
+
+    return fileBase64s;
 }
 
 async function fetchChatResponse(userMessage, sessionId, content_id, fileBase64s, isReply) {
@@ -617,7 +762,7 @@ function base64ToBlob(base64, mimeType) {
 }
 
 document.addEventListener('keydown', function (event) {
-    const textarea = document.getElementById('user-input');
+    // const textarea = document.getElementById('user-input');
     if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault(); // 阻止默认的换行行为
         document.getElementById('send-button').click();
@@ -652,22 +797,40 @@ async function updateChatUI(id, historyData) {
         let flag = false;
         if (content.role === "user") {
             messageElement.style.whiteSpace = "pre-wrap"; // 保留换行和空格
+
+            const messageWrapper = document.createElement("div");
+            messageWrapper.className = "message-wrapper";
+
+            let inlineDataArray = [];
             content.parts.forEach(part => {
                 if (part.text && !flag) {
                     const textDiv = document.createElement("div");
+                    textDiv.className = "message-text";
                     textDiv.textContent = part.text;
-                    messageElement.appendChild(textDiv);
+                    messageWrapper.appendChild(textDiv);
+
+                    // Add edit button
+                    const editButton = document.createElement("button");
+                    editButton.className = "edit-message-btn";
+                    editButton.innerHTML = '<i class="fas fa-edit"></i>';
+
+                    // 收集所有的 inline_data
+                    content.parts.forEach(p => {
+                        if (p.inline_data) {
+                            inlineDataArray.push(p.inline_data);
+                        }
+                    });
+
+                    editButton.onclick = () => editMessage(messageElement, part.text, inlineDataArray);
+                    messageWrapper.appendChild(editButton);
+                    messageElement.appendChild(messageWrapper);
                     lastUserMessage = part.text;
                     flag = true;
                 }
                 if (part.inline_data) {
                     const container = document.createElement("div");
                     container.className = "file-container";
-
-                    const mimeType = part.inline_data.mime_type;
-
-                    fileUI(container, part.inline_data, mimeType);
-
+                    fileUI(container, part.inline_data, part.inline_data.mime_type);
                     messageElement.appendChild(container);
                 }
             });
@@ -696,7 +859,7 @@ async function updateChatUI(id, historyData) {
                     img.onclick = () => {
                         const fullImg = window.open("", "_blank");
                         fullImg.document.write(`
-                            <html>
+                            <html lang="en">
                                 <head>
                                     <title>Full Size Image</title>
                                     <style>
@@ -705,7 +868,7 @@ async function updateChatUI(id, historyData) {
                                     </style>
                                 </head>
                                 <body>
-                                    <img src="${img.src}">
+                                    <img src="${img.src}" alt="">
                                 </body>
                             </html>
                         `);
@@ -949,8 +1112,7 @@ function createDocumentModal(base64Data, mimeType) {
         for (let i = 0; i < binary.length; i++) {
             bytes[i] = binary.charCodeAt(i);
         }
-        const decodedText = new TextDecoder('utf-8').decode(bytes);
-        textContainer.textContent = decodedText;
+        textContainer.textContent = new TextDecoder('utf-8').decode(bytes);
 
         modal.appendChild(textContainer);
     }
@@ -1104,7 +1266,7 @@ function deleteHistory(sessionId) {
             .then(response => {
                 if (response.ok) {
                     // 刷新历史记录列表
-                    historyList()
+                    historyList().then()
                     const id = sessionStorage.getItem("sessionId")
                     if (sessionId == id) {
                         startNewConversation()
@@ -1167,6 +1329,7 @@ function startNewConversation() {
     const chatContainer = document.getElementById("chat-container");
     chatContainer.innerHTML = "";
     document.getElementById("conversation-title").textContent = "AI Chat";
+
     // Remove active class from history item (if any)
     const historyList = document.getElementById("history-list");
     if (historyList) {
@@ -1175,8 +1338,20 @@ function startNewConversation() {
             item.classList.remove("active");
         }
     }
+
+    // 清除文件相关内容
+    const fileInput = document.getElementById("file-input");
+    if (fileInput) {
+        fileInput.value = "";
+    }
+    const uploadedFilesInfo = document.getElementById("uploaded-files-info");
+    if (uploadedFilesInfo) {
+        uploadedFilesInfo.innerHTML = "";
+        uploadedFilesInfo.style.display = "none";
+    }
+    uploadedFiles = []; // 清空全局文件数组
+
     chatContainer.style.display = "none";
-    enableUIForRateLimit(document.getElementById("user-input"));
     console.log("Conversation reset successfully.");
 }
 
@@ -1221,12 +1396,7 @@ window.addEventListener("beforeunload", function () {
     }, 0);
 });
 
-const toggleHistoryButton = document.getElementById('toggle-history');
 const sidebar = document.getElementById('sidebar');
-
-function toggleHistory() {
-    sidebar.classList.toggle('collapsed');
-}
 
 async function fetchFontAndConvertToBase64(fontURL) {
     try {
