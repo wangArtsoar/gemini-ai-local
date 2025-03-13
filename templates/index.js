@@ -104,7 +104,14 @@ function handleFiles(files) {
     const fileInput = document.getElementById("file-input");
 
     if (files.length === 0) {
-        chatContainer.style.display = "none";
+        // Check if chatContainer has any text content before hiding
+        const hasContent = Array.from(chatContainer.querySelectorAll('.conversation .user-message')).some(node =>
+            (node.textContent || '').trim().length > 0
+        );
+        if (!hasContent) {
+            chatContainer.style.display = "none";
+        }
+        uploadedInfoDiv.style.display = "none"; // Hide the div when no files
         return;
     }
 
@@ -115,16 +122,21 @@ function handleFiles(files) {
     // 清空现有内容，重新渲染
     uploadedInfoDiv.innerHTML = '';
 
-    Array.from(files).forEach(file => {
-        uploadedFiles.push(file);
+    // Use a local array for processing, do not directly modify uploadedFiles during iteration
+    const filesToProcess = Array.from(files); // Create a copy
+
+
+    filesToProcess.forEach((file, index) => { // Use index from the local array
+
         const fileContainer = document.createElement("div");
         fileContainer.className = "file-info-container";
-        fileContainer.dataset.fileIndex = String(uploadedFiles.length - 1); // Store index as string
+        fileContainer.dataset.fileIndex = String(index);  // store index for the current file list
+
 
         if (file.type.startsWith("image/")) {
             const img = document.createElement("img");
             img.src = URL.createObjectURL(file);
-            img.onload = () => URL.revokeObjectURL(img.src);
+            img.onload = () => URL.revokeObjectURL(img.src);  // Revoke the object URL after loading
             fileContainer.appendChild(img);
         } else {
             const fileInfo = document.createElement("p");
@@ -137,30 +149,36 @@ function handleFiles(files) {
         deleteBtn.innerHTML = "×";
         deleteBtn.onclick = () => {
             const fileIndex = parseInt(fileContainer.dataset.fileIndex);
-            if (fileIndex >= 0) {
-                // 从uploadedFiles数组中删除文件
-                uploadedFiles.splice(fileIndex, 1);
+
+            if (!isNaN(fileIndex) && fileIndex >= 0) { // Added isNaN check
+                // Find the correct index in uploadedFiles based on file identity
+                const uploadedIndex = uploadedFiles.findIndex(uf => uf === filesToProcess[fileIndex]);
+
+                if (uploadedIndex > -1) {
+                    uploadedFiles.splice(uploadedIndex, 1);
+
+                    // Update file input
+                    const dt = new DataTransfer();
+                    uploadedFiles.forEach(f => dt.items.add(f));
+                    fileInput.files = dt.files;
+                }
+
+                //Remove the container.  Do this *after* updating uploadedFiles and fileInput
                 fileContainer.remove();
 
-                // 更新file input的文件列表
-                const dt = new DataTransfer();
-                uploadedFiles.forEach(file => dt.items.add(file));
-                fileInput.files = dt.files;
-
-                if (uploadedInfoDiv.children.length === 0) {
-                    uploadedInfoDiv.style.display = "none";
-                    chatContainer.style.display = "none";
-                    chatContainer.scrollTop = chatContainer.scrollHeight;
-                }
-                handleFiles(uploadedFiles); // 重新渲染剩余文件
+                // Re-render with the updated file list, no recursion
+                handleFiles(uploadedFiles);
             }
         };
         fileContainer.appendChild(deleteBtn);
-
         uploadedInfoDiv.appendChild(fileContainer);
     });
 
-    chatContainer.appendChild(uploadedInfoDiv);
+    // Append uploadedInfoDiv to the chat container only once
+    if (!chatContainer.contains(uploadedInfoDiv)) {
+        chatContainer.appendChild(uploadedInfoDiv);
+    }
+    chatContainer.scrollTop = chatContainer.scrollHeight;
 }
 
 function formatFileSize(size) {
